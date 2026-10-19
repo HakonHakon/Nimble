@@ -1,0 +1,9 @@
+{$PARSEN_DOMAIN} {
+    @compressible {
+        not path /api/*
+    }
+    encode @compressible zstd gzip
+    reverse_proxy studio:4173 {
+        header_up X-Real-IP {remote_host}
+    }
+}

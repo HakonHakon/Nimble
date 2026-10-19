@@ -1,0 +1,10 @@
+services:
+  studio:
+    image: parsen-studio:verification
+  backup:
+    image: parsen-studio:verification
+  caddy:
+    environment:
+      PARSEN_DOMAIN: ":80"
+    ports: !override
+      - "127.0.0.1::80"

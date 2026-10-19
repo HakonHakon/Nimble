@@ -1,0 +1,90 @@
+services:
+  studio:
+    image: parsen-studio:local
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - ${PARSEN_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      PORT: 4173
+    expose:
+      - "4173"
+    volumes:
+      - parsen_storage:/var/lib/parsen
+      - parsen_backups:/backups
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4173/api/ready').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  backup:
+    image: parsen-studio:local
+    restart: unless-stopped
+    depends_on:
+      studio:
+        condition: service_healthy
+    command: ["node", "scripts/backup-daemon.mjs"]
+    network_mode: none
+    read_only: true
+    environment:
+      PARSEN_STORAGE_DIR: /var/lib/parsen
+      PARSEN_BACKUP_DIR: /backups
+      PARSEN_BACKUP_INTERVAL_HOURS: "24"
+      PARSEN_BACKUP_RETENTION_COUNT: "14"
+    volumes:
+      - parsen_storage:/var/lib/parsen
+      - parsen_backups:/backups
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      studio:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PARSEN_DOMAIN: ${PARSEN_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  parsen_storage:
+  parsen_backups:
+  caddy_data:
+  caddy_config:

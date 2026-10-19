@@ -1,0 +1,16 @@
+.git
+.env
+data/*
+uploads/*
+published/*
+backups/*
+storage/*
+audit/*
+node_modules
+test
+test-results
+*.zip
+README.md
+Dockerfile
+docker-compose*.yml
+Caddyfile
