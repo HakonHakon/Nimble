@@ -8,17 +8,17 @@ import { example, png } from './helpers.mjs';
 import assert from 'node:assert/strict';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'parsen-docker-check-'));
-const project = 'parsen-verification-' + randomUUID().slice(0, 8);
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'nimble-docker-check-'));
+const project = 'nimble-verification-' + randomUUID().slice(0, 8);
 const environmentFile = path.join(directory, 'fixture.env');
 await fs.writeFile(environmentFile, [
-  'NODE_ENV=production', 'PARSEN_DOMAIN=dev.parsen.no', 'PARSEN_PUBLIC_URL=https://dev.parsen.no',
-  'PARSEN_TRUST_PROXY=1', 'PARSEN_ADMIN_EMAIL=container@example.test', 'PARSEN_ADMIN_PASSWORD=Fixture-container-password-2026',
-  'PARSEN_ADMIN_NAME=Container fixture', 'PARSEN_STORAGE_DIR=/var/lib/parsen', 'PARSEN_BACKUP_DIR=/backups'
+  'NODE_ENV=production', 'NIMBLE_DOMAIN=dev.nimble.no', 'NIMBLE_PUBLIC_URL=https://dev.nimble.no',
+  'NIMBLE_TRUST_PROXY=1', 'NIMBLE_ADMIN_EMAIL=container@example.test', 'NIMBLE_ADMIN_PASSWORD=Fixture-container-password-2026',
+  'NIMBLE_ADMIN_NAME=Container fixture', 'NIMBLE_STORAGE_DIR=/var/lib/nimble', 'NIMBLE_BACKUP_DIR=/backups'
 ].join('\n'));
 const args = ['compose', '-p', project, '--env-file', environmentFile, '-f', 'docker-compose.production.yml', '-f', 'test/docker-compose.verify.yml'];
 async function compose(...tail) {
-  const task = spawn('docker', [...args, ...tail], { cwd: root, windowsHide: true, env: { ...process.env, PARSEN_ENV_FILE: environmentFile }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const task = spawn('docker', [...args, ...tail], { cwd: root, windowsHide: true, env: { ...process.env, NIMBLE_ENV_FILE: environmentFile }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '', errors = ''; task.stdout.on('data', chunk => { output += chunk; }); task.stderr.on('data', chunk => { errors += chunk; });
   const exit = await new Promise(resolve => { task.on('error', error => { errors += error.message; resolve(1); }); task.on('exit', resolve); });
   if (exit !== 0) throw new Error('Container verification failed: ' + output + errors);
@@ -55,7 +55,7 @@ try {
   assert.ok(snapshot.ok);
   console.log('Proxy, secure cookies, save, upload, concurrent publication and contact inbox passed.');
   await compose('stop', 'studio', 'backup');
-  await compose('run', '--rm', '--no-deps', '-e', 'PARSEN_ALLOW_RESTORE=yes', 'studio', 'node', 'scripts/restore.mjs', snapshot.backup);
+  await compose('run', '--rm', '--no-deps', '-e', 'NIMBLE_ALLOW_RESTORE=yes', 'studio', 'node', 'scripts/restore.mjs', snapshot.backup);
   await compose('up', '-d', '--no-build', '--wait', '--wait-timeout', '120', 'studio', 'backup');
   assert.equal((await request('/api/ready')).status, 200);
   assert.ok((await request('/')).text.includes('A saved heading'));
@@ -67,8 +67,8 @@ try {
   console.log('Container volume restore, restart persistence and scheduled backup service passed.');
   console.log(JSON.stringify({ ok: true, verification: 'production Compose services and storage, localhost HTTP proxy; real-domain TLS pending', project }));
 } finally {
-  if (!/^parsen-verification-[a-f0-9]{8}$/.test(project)) throw new Error('Unexpected verification project.');
+  if (!/^nimble-verification-[a-f0-9]{8}$/.test(project)) throw new Error('Unexpected verification project.');
   await compose('down', '--volumes', '--remove-orphans').catch(error => console.error(error.message));
-  if (path.dirname(directory) !== path.resolve(os.tmpdir()) || !path.basename(directory).startsWith('parsen-docker-check-')) throw new Error('Unexpected verification cleanup path.');
+  if (path.dirname(directory) !== path.resolve(os.tmpdir()) || !path.basename(directory).startsWith('nimble-docker-check-')) throw new Error('Unexpected verification cleanup path.');
   await fs.rm(directory, { recursive: true, force: true });
 }

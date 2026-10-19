@@ -1,19 +1,19 @@
 services:
   studio:
-    image: parsen-studio:local
+    image: nimble-studio:local
     build:
       context: .
     restart: unless-stopped
     env_file:
-      - ${PARSEN_ENV_FILE:-.env}
+      - ${NIMBLE_ENV_FILE:-.env}
     environment:
       NODE_ENV: production
       PORT: 4173
     expose:
       - "4173"
     volumes:
-      - parsen_storage:/var/lib/parsen
-      - parsen_backups:/backups
+      - nimble_storage:/var/lib/nimble
+      - nimble_backups:/backups
     init: true
     read_only: true
     tmpfs:
@@ -40,7 +40,7 @@ services:
         max-file: "5"
 
   backup:
-    image: parsen-studio:local
+    image: nimble-studio:local
     restart: unless-stopped
     depends_on:
       studio:
@@ -49,13 +49,13 @@ services:
     network_mode: none
     read_only: true
     environment:
-      PARSEN_STORAGE_DIR: /var/lib/parsen
-      PARSEN_BACKUP_DIR: /backups
-      PARSEN_BACKUP_INTERVAL_HOURS: "24"
-      PARSEN_BACKUP_RETENTION_COUNT: "14"
+      NIMBLE_STORAGE_DIR: /var/lib/nimble
+      NIMBLE_BACKUP_DIR: /backups
+      NIMBLE_BACKUP_INTERVAL_HOURS: "24"
+      NIMBLE_BACKUP_RETENTION_COUNT: "14"
     volumes:
-      - parsen_storage:/var/lib/parsen
-      - parsen_backups:/backups
+      - nimble_storage:/var/lib/nimble
+      - nimble_backups:/backups
     logging:
       driver: json-file
       options:
@@ -72,7 +72,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      PARSEN_DOMAIN: ${PARSEN_DOMAIN}
+      NIMBLE_DOMAIN: ${NIMBLE_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -84,7 +84,7 @@ services:
         max-file: "5"
 
 volumes:
-  parsen_storage:
-  parsen_backups:
+  nimble_storage:
+  nimble_backups:
   caddy_data:
   caddy_config:

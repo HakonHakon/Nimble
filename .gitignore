@@ -1,11 +1,10 @@
-parsen-silex-import-*.zip
-parsen-silex-import.zip
+*-silex-import*.zip
 .env
 backups/*
 data/site.json
-data/parsen.sqlite
-data/parsen.sqlite-shm
-data/parsen.sqlite-wal
+data/nimble.sqlite
+data/nimble.sqlite-shm
+data/nimble.sqlite-wal
 uploads/*
 published/*
 published.previous/*

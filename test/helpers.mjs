@@ -26,7 +26,7 @@ export const example = {
   }
 };
 export async function fixture() {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'parsen-release-test-'));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'nimble-release-test-'));
   const app = path.join(directory, 'app'), storage = path.join(directory, 'storage'), backupDir = path.join(directory, 'backups');
   await fs.mkdir(app);
   for (const entry of ['server.mjs', 'package.json', 'lib', 'scripts', 'assets', 'builder.html', 'login.html', 'control-panel.html']) await fs.cp(path.join(sourceRoot, entry), path.join(app, entry), { recursive: true });
@@ -35,7 +35,7 @@ export async function fixture() {
   let child, base, logs;
   async function start(overrides = {}) {
     logs = '';
-    child = spawn(process.execPath, ['server.mjs'], { cwd: app, windowsHide: true, env: { ...process.env, NODE_ENV: 'development', HOST: '127.0.0.1', PORT: '0', PARSEN_STORAGE_DIR: storage, PARSEN_BACKUP_DIR: backupDir, PARSEN_PUBLIC_URL: '', PARSEN_TRUST_PROXY: '0', PARSEN_ADMIN_EMAIL: ownerCredentials.email, PARSEN_ADMIN_PASSWORD: ownerCredentials.password, PARSEN_ADMIN_NAME: 'Fixture owner', ...overrides }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['server.mjs'], { cwd: app, windowsHide: true, env: { ...process.env, NODE_ENV: 'development', HOST: '127.0.0.1', PORT: '0', NIMBLE_STORAGE_DIR: storage, NIMBLE_BACKUP_DIR: backupDir, NIMBLE_PUBLIC_URL: '', NIMBLE_TRUST_PROXY: '0', NIMBLE_ADMIN_EMAIL: ownerCredentials.email, NIMBLE_ADMIN_PASSWORD: ownerCredentials.password, NIMBLE_ADMIN_NAME: 'Fixture owner', ...overrides }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', chunk => { logs += chunk; }); child.stderr.on('data', chunk => { logs += chunk; });
     for (let i = 0; i < 150; i++) {
       const port = logs.match(/http:\/\/localhost:(\d+)/)?.[1];
@@ -69,14 +69,14 @@ export async function fixture() {
     return request('/api/site', { method: 'PUT', body: document, auth, headers: { 'If-Match': current.headers.get('etag') } });
   }
   async function runScript(script, args = [], environment = {}) {
-    const task = spawn(process.execPath, [path.join(app, 'scripts', script), ...args], { cwd: app, windowsHide: true, env: { ...process.env, PARSEN_STORAGE_DIR: storage, PARSEN_BACKUP_DIR: backupDir, ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const task = spawn(process.execPath, [path.join(app, 'scripts', script), ...args], { cwd: app, windowsHide: true, env: { ...process.env, NIMBLE_STORAGE_DIR: storage, NIMBLE_BACKUP_DIR: backupDir, ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = ''; task.stdout.on('data', chunk => { output += chunk; }); task.stderr.on('data', chunk => { output += chunk; });
     const exit = await new Promise(resolve => task.once('exit', resolve));
     return { exit, output };
   }
   async function cleanup() {
     await stop();
-    if (path.dirname(directory) !== path.resolve(os.tmpdir()) || !path.basename(directory).startsWith('parsen-release-test-')) throw new Error('Unexpected cleanup directory.');
+    if (path.dirname(directory) !== path.resolve(os.tmpdir()) || !path.basename(directory).startsWith('nimble-release-test-')) throw new Error('Unexpected cleanup directory.');
     await fs.rm(directory, { recursive: true, force: true });
   }
   await start();

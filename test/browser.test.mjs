@@ -7,7 +7,7 @@ import { fixture, ownerCredentials, png } from './helpers.mjs';
 
 test('real browser: editor lifecycle, pages, drag/drop, uploads, preview, contact, roles and conflicts', { timeout: 120000 }, async t => {
   const f = await fixture(); t.after(() => f.cleanup());
-  const browser = await chromium.launch(process.env.PARSEN_BROWSER_CHANNEL ? { channel: process.env.PARSEN_BROWSER_CHANNEL } : {});
+  const browser = await chromium.launch(process.env.NIMBLE_BROWSER_CHANNEL ? { channel: process.env.NIMBLE_BROWSER_CHANNEL } : {});
   t.after(() => browser.close());
   const context = await browser.newContext({ viewport: { width: 1536, height: 1000 } });
   const errors = [];
@@ -44,7 +44,7 @@ test('real browser: editor lifecycle, pages, drag/drop, uploads, preview, contac
     await page.locator('#inspector [data-field=title]').fill('A recoverable draft');
     await page.locator('#inspector [data-field=title]').press('Tab');
     await page.locator('.save-state').filter({ hasText: 'Fixture save unavailable' }).waitFor();
-    assert.ok(await page.evaluate(() => Object.entries(localStorage).some(([key, value]) => key.startsWith('parsen-draft-v2-') && JSON.parse(value).dirty)));
+    assert.ok(await page.evaluate(() => Object.entries(localStorage).some(([key, value]) => key.startsWith('nimble-draft-v2-') && JSON.parse(value).dirty)));
     await context.unroute('**/api/site');
     await page.keyboard.press('Control+s'); await saved(page);
     await editField('#inspector [data-field=title]', 'Browser saved heading');
@@ -112,14 +112,14 @@ test('real browser: editor lifecycle, pages, drag/drop, uploads, preview, contac
   });
   await t.test('site settings and fonts persist and appear in the renderer', async () => {
     await page.locator('[data-tool=settings]').click();
-    await editField('[data-site-setting=name]', 'Parsen browser test');
+    await editField('[data-site-setting=name]', 'Nimble browser test');
     await editField('[data-site-setting=description]', 'A description saved in the browser.');
     await page.locator('[data-site-setting=searchVisible]').uncheck(); await saved(page);
     await page.locator('[data-tool=styles]').click();
     await page.locator('[data-site-setting=headingFont]').selectOption('serif'); await saved(page);
     assert.ok((await page.locator('#siteCanvas h1').evaluate(element => getComputedStyle(element).fontFamily)).includes('Georgia'));
     await page.reload(); await saved(page);
-    assert.equal(await page.locator('.site-logo').textContent(), 'Parsen browser test');
+    assert.equal(await page.locator('.site-logo').textContent(), 'Nimble browser test');
   });
   await t.test('pages are independent, page links work and preview renders the saved layout', async () => {
     await page.locator('[data-tool=pages]').click(); await page.locator('[data-action=add-page]').click();
@@ -174,11 +174,11 @@ test('real browser: editor lifecycle, pages, drag/drop, uploads, preview, contac
     assert.equal(await page.locator('#inspector').isVisible(), true);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     assert.ok(width.scroll <= width.client + 2, JSON.stringify(width));
-    if (process.env.PARSEN_SCREENSHOT_DIR) {
-      await fs.mkdir(process.env.PARSEN_SCREENSHOT_DIR, { recursive: true });
-      await page.screenshot({ path: path.join(process.env.PARSEN_SCREENSHOT_DIR, 'editor-mobile.png'), fullPage: true });
+    if (process.env.NIMBLE_SCREENSHOT_DIR) {
+      await fs.mkdir(process.env.NIMBLE_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.NIMBLE_SCREENSHOT_DIR, 'editor-mobile.png'), fullPage: true });
       await page.setViewportSize({ width: 1536, height: 1000 });
-      await page.screenshot({ path: path.join(process.env.PARSEN_SCREENSHOT_DIR, 'editor-desktop.png'), fullPage: true });
+      await page.screenshot({ path: path.join(process.env.NIMBLE_SCREENSHOT_DIR, 'editor-desktop.png'), fullPage: true });
     } else await page.setViewportSize({ width: 1536, height: 1000 });
   });
   await t.test('two editor sessions cannot silently overwrite newer work', async () => {

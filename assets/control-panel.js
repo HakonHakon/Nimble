@@ -75,7 +75,7 @@ $('closeReset').addEventListener('click', () => $('resetDialog').close());
 $('older').addEventListener('click', () => loadMessages(true).catch(error => notice(error.message, true)));
 $('refreshInbox').addEventListener('click', () => loadMessages().catch(error => notice(error.message, true)));
 $('logout').addEventListener('click', async () => {
-  try { await api('/api/auth/logout', { method: 'POST' }); localStorage.removeItem('parsen-draft-v2-' + identity.user.id); location.replace('/login.html'); }
+  try { await api('/api/auth/logout', { method: 'POST' }); localStorage.removeItem('nimble-draft-v2-' + identity.user.id); location.replace('/login.html'); }
   catch (error) { notice(error.message, true); }
 });
 init();

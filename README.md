@@ -109,14 +109,14 @@ cp .env.example .env
 Edit `.env` before starting. At minimum, set:
 
 ```dotenv
-PARSEN_DOMAIN=www.example.com
-PARSEN_PUBLIC_URL=https://www.example.com
-PARSEN_ADMIN_NAME=Site owner
-PARSEN_ADMIN_EMAIL=owner@example.com
-PARSEN_ADMIN_PASSWORD=use-a-unique-password-at-least-12-characters
+NIMBLE_DOMAIN=www.example.com
+NIMBLE_PUBLIC_URL=https://www.example.com
+NIMBLE_ADMIN_NAME=Site owner
+NIMBLE_ADMIN_EMAIL=owner@example.com
+NIMBLE_ADMIN_PASSWORD=use-a-unique-password-at-least-12-characters
 ```
 
-The `PARSEN_*` names are retained as compatibility names in the current application and deployment files; they do not limit the site to any particular brand.
+The `NIMBLE_*` names are the application configuration names and can be changed to match your own deployment conventions.
 
 Start the deployment:
 
@@ -160,7 +160,7 @@ Restore only after stopping both writers, and replace `EXACT-SNAPSHOT-DIRECTORY`
 ```bash
 docker compose -f docker-compose.production.yml stop studio backup
 docker compose -f docker-compose.production.yml run --rm --no-deps \
-  -e PARSEN_ALLOW_RESTORE=yes studio node scripts/restore.mjs \
+  -e NIMBLE_ALLOW_RESTORE=yes studio node scripts/restore.mjs \
   /backups/EXACT-SNAPSHOT-DIRECTORY
 docker compose -f docker-compose.production.yml up -d --wait studio backup
 ```
@@ -199,7 +199,7 @@ See [PHP_SHARED_HOSTING.md](PHP_SHARED_HOSTING.md) for PHP limits, security note
 - Rotate the setup token after first-owner creation.
 - Give editors and viewers only the access they need. Owner/admin role changes and password changes revoke affected sessions.
 - Contact messages and backups contain private data; restrict access and copy backups to protected storage.
-- If the owner is locked out of the Node edition, an authorised operator can use `scripts/reset-owner.mjs` with `PARSEN_OWNER_NEW_PASSWORD` supplied only for that command. Never place the password in a committed file or shell history.
+- If the owner is locked out of the Node edition, an authorised operator can use `scripts/reset-owner.mjs` with `NIMBLE_OWNER_NEW_PASSWORD` supplied only for that command. Never place the password in a committed file or shell history.
 
 The repository includes security headers, CSRF and origin checks, login throttling, opaque hashed sessions, password hashing with scrypt, optimistic revision checks, safe public-file routing, and atomic publication. These controls reduce common risks but do not replace host hardening, backups, monitoring, or an application security review.
 

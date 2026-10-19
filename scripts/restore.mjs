@@ -5,16 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { inventory } from './backup.mjs';
 
-if (process.env.PARSEN_ALLOW_RESTORE !== 'yes') throw new Error('Stop Studio and the backup service, then set PARSEN_ALLOW_RESTORE=yes for this restore command.');
+if (process.env.NIMBLE_ALLOW_RESTORE !== 'yes') throw new Error('Stop Studio and the backup service, then set NIMBLE_ALLOW_RESTORE=yes for this restore command.');
 const source = path.resolve(process.argv[2] || '');
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const storage = path.resolve(process.env.PARSEN_STORAGE_DIR || appRoot);
+const storage = path.resolve(process.env.NIMBLE_STORAGE_DIR || appRoot);
 if (!process.argv[2] || source === storage || source.startsWith(path.join(storage, 'data') + path.sep)) throw new Error('Supply a separate backup directory.');
 const manifest = JSON.parse(await fs.readFile(path.join(source, 'manifest.json'), 'utf8'));
-if (manifest.format !== 2 || manifest.application !== 'parsen-studio') throw new Error('Unsupported backup format.');
+if (manifest.format !== 2 || manifest.application !== 'nimble-studio') throw new Error('Unsupported backup format.');
 const actual = await inventory(source);
 if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) throw new Error('The backup checksum inventory does not match. No data was changed.');
-const validation = new DatabaseSync(path.join(source, 'data', 'parsen.sqlite'), { readOnly: true });
+const validation = new DatabaseSync(path.join(source, 'data', 'nimble.sqlite'), { readOnly: true });
 try { if (validation.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok') throw new Error('The backup database is damaged.'); }
 finally { validation.close(); }
 const staged = path.join(storage, '.restore-' + randomUUID());

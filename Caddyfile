@@ -1,4 +1,4 @@
-{$PARSEN_DOMAIN} {
+{$NIMBLE_DOMAIN} {
     @compressible {
         not path /api/*
     }

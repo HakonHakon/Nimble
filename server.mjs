@@ -11,22 +11,22 @@ import { pageHtml } from './lib/render.mjs';
 import { validPassword, passwordHash, checkPassword } from './lib/passwords.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const storage = path.resolve(process.env.PARSEN_STORAGE_DIR || root);
+const storage = path.resolve(process.env.NIMBLE_STORAGE_DIR || root);
 const dataDir = path.join(storage, 'data'), uploads = path.join(storage, 'uploads'), published = path.join(storage, 'published');
 const production = process.env.NODE_ENV === 'production';
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST || (production ? '0.0.0.0' : '127.0.0.1');
-const publicOrigin = process.env.PARSEN_PUBLIC_URL ? new URL(process.env.PARSEN_PUBLIC_URL).origin : '';
-const sessionDays = Number(process.env.PARSEN_SESSION_DAYS || 7);
-const maxDocumentBytes = Number(process.env.PARSEN_MAX_DOCUMENT_BYTES || 2_000_000);
+const publicOrigin = process.env.NIMBLE_PUBLIC_URL ? new URL(process.env.NIMBLE_PUBLIC_URL).origin : '';
+const sessionDays = Number(process.env.NIMBLE_SESSION_DAYS || 7);
+const maxDocumentBytes = Number(process.env.NIMBLE_MAX_DOCUMENT_BYTES || 2_000_000);
 const maxMediaBytes = 15 * 1024 * 1024;
-const maxStorageBytes = Number(process.env.PARSEN_MEDIA_QUOTA_BYTES || 1024 * 1024 * 1024);
+const maxStorageBytes = Number(process.env.NIMBLE_MEDIA_QUOTA_BYTES || 1024 * 1024 * 1024);
 if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 30) throw new Error('Session lifetime must be 1–30 days.');
 if (!Number.isInteger(maxDocumentBytes) || maxDocumentBytes < 10000 || maxDocumentBytes > 12000000) throw new Error('Site document limit must be 10,000–12,000,000 bytes.');
 if (!Number.isSafeInteger(maxStorageBytes) || maxStorageBytes < 1) throw new Error('Media quota must be a positive integer.');
-if (production && (!publicOrigin || !publicOrigin.startsWith('https://'))) throw new Error('Production requires PARSEN_PUBLIC_URL=https://your-domain.');
+if (production && (!publicOrigin || !publicOrigin.startsWith('https://'))) throw new Error('Production requires NIMBLE_PUBLIC_URL=https://your-domain.');
 await Promise.all([dataDir, uploads, published].map(directory => fs.mkdir(directory, { recursive: true })));
-const db = new DatabaseSync(path.join(dataDir, 'parsen.sqlite'));
+const db = new DatabaseSync(path.join(dataDir, 'nimble.sqlite'));
 db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
 db.exec([
   "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE COLLATE NOCASE,password_hash TEXT NOT NULL,password_salt TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),created_at TEXT NOT NULL);",
@@ -54,7 +54,7 @@ const emailValue = value => String(value || '').trim().toLowerCase();
 const validEmail = value => value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const userPublic = id => db.prepare('SELECT id,name,email,role,created_at FROM users WHERE id=?').get(id);
 const userRaw = email => db.prepare('SELECT * FROM users WHERE email=?').get(emailValue(email));
-const siteRow = () => db.prepare("SELECT * FROM sites WHERE id='parsen'").get();
+const siteRow = () => db.prepare("SELECT * FROM sites WHERE id='nimble'").get();
 const audit = (userId, action, metadata = {}) => db.prepare('INSERT INTO audit_events(user_id,action,metadata_json,created_at) VALUES(?,?,?,?)').run(userId, action, JSON.stringify(metadata), timestamp());
 function transaction(operation) {
   db.exec('BEGIN IMMEDIATE');
@@ -72,28 +72,28 @@ async function initialDocument() {
 }
 function createSite(ownerId, document) {
   const existing = siteRow();
-  if (!existing) db.prepare('INSERT INTO sites(id,owner_id,document_json,updated_at,revision) VALUES(?,?,?,?,1)').run('parsen', ownerId, JSON.stringify(document), timestamp());
+  if (!existing) db.prepare('INSERT INTO sites(id,owner_id,document_json,updated_at,revision) VALUES(?,?,?,?,1)').run('nimble', ownerId, JSON.stringify(document), timestamp());
   const owner = siteRow().owner_id;
-  db.prepare("INSERT INTO site_members(site_id,user_id,role,created_at) VALUES('parsen',?,'owner',?) ON CONFLICT(site_id,user_id) DO UPDATE SET role='owner'").run(owner, timestamp());
-  db.prepare("INSERT OR IGNORE INTO site_members(site_id,user_id,role,created_at) SELECT 'parsen',id,CASE WHEN role='admin' THEN 'admin' ELSE 'viewer' END,created_at FROM users").run();
+  db.prepare("INSERT INTO site_members(site_id,user_id,role,created_at) VALUES('nimble',?,'owner',?) ON CONFLICT(site_id,user_id) DO UPDATE SET role='owner'").run(owner, timestamp());
+  db.prepare("INSERT OR IGNORE INTO site_members(site_id,user_id,role,created_at) SELECT 'nimble',id,CASE WHEN role='admin' THEN 'admin' ELSE 'viewer' END,created_at FROM users").run();
 }
 if (!db.prepare('SELECT id FROM users LIMIT 1').get()) {
-  const email = process.env.PARSEN_ADMIN_EMAIL, password = process.env.PARSEN_ADMIN_PASSWORD;
+  const email = process.env.NIMBLE_ADMIN_EMAIL, password = process.env.NIMBLE_ADMIN_PASSWORD;
   if (email && password) {
     if (production && /replace-with|test-only|example-password/i.test(password)) throw new Error('Replace the example admin password before production.');
     const credentials = await passwordHash(password), document = await initialDocument();
-    transaction(() => { const user = createUser({ name: process.env.PARSEN_ADMIN_NAME || 'Nimble owner', email, password, role: 'admin' }, credentials); createSite(user.id, document); audit(user.id, 'owner_provisioned'); });
-  } else if (production && !process.env.PARSEN_SETUP_TOKEN) throw new Error('Provision PARSEN_ADMIN_EMAIL/PARSEN_ADMIN_PASSWORD or a private PARSEN_SETUP_TOKEN before production startup.');
+    transaction(() => { const user = createUser({ name: process.env.NIMBLE_ADMIN_NAME || 'Nimble owner', email, password, role: 'admin' }, credentials); createSite(user.id, document); audit(user.id, 'owner_provisioned'); });
+  } else if (production && !process.env.NIMBLE_SETUP_TOKEN) throw new Error('Provision NIMBLE_ADMIN_EMAIL/NIMBLE_ADMIN_PASSWORD or a private NIMBLE_SETUP_TOKEN before production startup.');
 } else {
   const owner = siteRow()?.owner_id || db.prepare("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1").get()?.id;
   if (!owner) throw new Error('No site owner exists. Restore a valid account database.');
   const document = await initialDocument();
   transaction(() => createSite(owner, document));
 }
-const roleFor = user => siteRow()?.owner_id === user.id ? 'owner' : db.prepare("SELECT role FROM site_members WHERE site_id='parsen' AND user_id=?").get(user.id)?.role || null;
+const roleFor = user => siteRow()?.owner_id === user.id ? 'owner' : db.prepare("SELECT role FROM site_members WHERE site_id='nimble' AND user_id=?").get(user.id)?.role || null;
 const roleRank = { viewer: 1, editor: 2, admin: 3, owner: 4 };
 function cookieToken(req) {
-  try { return decodeURIComponent(String(req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith('parsen_session='))?.slice(15) || ''); } catch { return ''; }
+  try { return decodeURIComponent(String(req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith('nimble_session='))?.slice(15) || ''); } catch { return ''; }
 }
 function identity(req) {
   const token = cookieToken(req);
@@ -117,12 +117,12 @@ function createSession(userId) {
   return { token, csrf };
 }
 function sessionCookie(res, token = '') {
-  res.setHeader('Set-Cookie', 'parsen_session=' + token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + (token ? sessionDays * 86400 : 0) + (production ? '; Secure' : ''));
+  res.setHeader('Set-Cookie', 'nimble_session=' + token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + (token ? sessionDays * 86400 : 0) + (production ? '; Secure' : ''));
 }
 const rates = new Map();
 function clientIP(req) {
   const forwarded = String(req.headers['x-real-ip'] || '');
-  return process.env.PARSEN_TRUST_PROXY === '1' && isIP(forwarded) ? forwarded : req.socket.remoteAddress;
+  return process.env.NIMBLE_TRUST_PROXY === '1' && isIP(forwarded) ? forwarded : req.socket.remoteAddress;
 }
 function rate(key, limit, windowMs = 15 * 60000) {
   const now = Date.now();
@@ -179,7 +179,7 @@ function savedDocument(req, input) {
     if (expected !== '"' + row.revision + '"') throw problem(409, 'Someone else saved a newer version. Reload before saving your changes.');
     const json = JSON.stringify(document);
     if (json !== row.document_json) {
-      db.prepare("UPDATE sites SET document_json=?,revision=revision+1,updated_at=? WHERE id='parsen'").run(json, timestamp());
+      db.prepare("UPDATE sites SET document_json=?,revision=revision+1,updated_at=? WHERE id='nimble'").run(json, timestamp());
     }
     return siteRow();
   });
@@ -198,7 +198,7 @@ function templateInput(body, current = null) {
   if (Buffer.byteLength(JSON.stringify(document)) > maxDocumentBytes) throw problem(413, 'The template document is too large.');
   return { name, description, document };
 }
-function templateRow(id) { return db.prepare("SELECT * FROM templates WHERE id=? AND site_id='parsen'").get(id); }
+function templateRow(id) { return db.prepare("SELECT * FROM templates WHERE id=? AND site_id='nimble'").get(id); }
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm' };
 async function sendFile(req, res, filename, { html = false, immutable = false } = {}) {
   const info = await fs.stat(filename);
@@ -282,13 +282,13 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/ready' && method === 'GET') {
       const row = siteRow();
       await Promise.all([dataDir, uploads, published].map(async directory => { const test = path.join(directory, '.ready-' + randomUUID()); await fs.writeFile(test, ''); await fs.unlink(test); }));
-      return send(res, row ? 200 : 503, { ok: Boolean(row), application: 'parsen-studio', setupRequired: !row });
+      return send(res, row ? 200 : 503, { ok: Boolean(row), application: 'nimble-studio', setupRequired: !row });
     }
-    if (pathname === '/api/auth/setup-status' && method === 'GET') return send(res, 200, { setupRequired: !siteRow(), tokenRequired: production || Boolean(process.env.PARSEN_SETUP_TOKEN) });
+    if (pathname === '/api/auth/setup-status' && method === 'GET') return send(res, 200, { setupRequired: !siteRow(), tokenRequired: production || Boolean(process.env.NIMBLE_SETUP_TOKEN) });
     if (pathname === '/api/auth/setup' && method === 'POST') {
       rate('setup:' + clientIP(req), 10);
       const body = await readBody(req, 10000);
-      const setupToken = process.env.PARSEN_SETUP_TOKEN;
+      const setupToken = process.env.NIMBLE_SETUP_TOKEN;
       if ((production || setupToken) && !equal(body.setupToken, setupToken)) throw problem(403, 'Use the private setup token supplied by the site administrator.');
       if (siteRow()) throw problem(409, 'Owner setup is already complete.');
       if (!validPassword(body.password)) throw problem(400, 'Use a password of 12–256 characters.');
@@ -356,17 +356,17 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/templates' && method === 'GET') {
       requireAccess(req, 'edit');
-      const templates = db.prepare("SELECT id,name,description,document_json,created_at,updated_at FROM templates WHERE site_id='parsen' ORDER BY updated_at DESC,name ASC").all().map(templatePublic);
+      const templates = db.prepare("SELECT id,name,description,document_json,created_at,updated_at FROM templates WHERE site_id='nimble' ORDER BY updated_at DESC,name ASC").all().map(templatePublic);
       return send(res, 200, { templates });
     }
     if (pathname === '/api/templates' && method === 'POST') {
       const auth = requireAccess(req, 'edit', true), input = templateInput(await readBody(req));
       const row = transaction(() => {
         if (!siteRow()) throw problem(503, 'Owner setup is incomplete.');
-        if (Number(db.prepare("SELECT COUNT(*) AS total FROM templates WHERE site_id='parsen'").get().total) >= 50) throw problem(409, 'You can save up to 50 templates for this site.');
-        if (db.prepare("SELECT id FROM templates WHERE site_id='parsen' AND name=?").get(input.name)) throw problem(409, 'A template with that name already exists.');
+        if (Number(db.prepare("SELECT COUNT(*) AS total FROM templates WHERE site_id='nimble'").get().total) >= 50) throw problem(409, 'You can save up to 50 templates for this site.');
+        if (db.prepare("SELECT id FROM templates WHERE site_id='nimble' AND name=?").get(input.name)) throw problem(409, 'A template with that name already exists.');
         const id = randomUUID();
-        db.prepare('INSERT INTO templates(id,site_id,name,description,document_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id, 'parsen', input.name, input.description, JSON.stringify(input.document), timestamp(), timestamp());
+        db.prepare('INSERT INTO templates(id,site_id,name,description,document_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id, 'nimble', input.name, input.description, JSON.stringify(input.document), timestamp(), timestamp());
         audit(auth.user.id, 'template_created', { templateId: id, name: input.name });
         return templateRow(id);
       });
@@ -377,13 +377,13 @@ const server = http.createServer(async (req, res) => {
       const auth = requireAccess(req, 'edit', true), id = templateMatch[1], existing = templateRow(id);
       if (!existing) throw problem(404, 'Template not found.');
       if (method === 'DELETE') {
-        transaction(() => { db.prepare("DELETE FROM templates WHERE id=? AND site_id='parsen'").run(id); audit(auth.user.id, 'template_deleted', { templateId: id }); });
+        transaction(() => { db.prepare("DELETE FROM templates WHERE id=? AND site_id='nimble'").run(id); audit(auth.user.id, 'template_deleted', { templateId: id }); });
         return send(res, 200, { ok: true });
       }
       const input = templateInput(await readBody(req), existing);
       const row = transaction(() => {
-        if (db.prepare("SELECT id FROM templates WHERE site_id='parsen' AND name=? AND id<>?").get(input.name, id)) throw problem(409, 'A template with that name already exists.');
-        db.prepare('UPDATE templates SET name=?,description=?,document_json=?,updated_at=? WHERE id=? AND site_id=\'parsen\'').run(input.name, input.description, JSON.stringify(input.document), timestamp(), id);
+        if (db.prepare("SELECT id FROM templates WHERE site_id='nimble' AND name=? AND id<>?").get(input.name, id)) throw problem(409, 'A template with that name already exists.');
+        db.prepare('UPDATE templates SET name=?,description=?,document_json=?,updated_at=? WHERE id=? AND site_id=\'nimble\'').run(input.name, input.description, JSON.stringify(input.document), timestamp(), id);
         audit(auth.user.id, 'template_updated', { templateId: id, name: input.name });
         return templateRow(id);
       });
@@ -410,14 +410,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/admin/users' && method === 'GET') {
       requireAccess(req, 'users');
-      const users = db.prepare("SELECT u.id,u.name,u.email,u.created_at,m.role AS site_role FROM users u JOIN site_members m ON m.user_id=u.id AND m.site_id='parsen' ORDER BY u.id").all();
+      const users = db.prepare("SELECT u.id,u.name,u.email,u.created_at,m.role AS site_role FROM users u JOIN site_members m ON m.user_id=u.id AND m.site_id='nimble' ORDER BY u.id").all();
       return send(res, 200, { users });
     }
     if (pathname === '/api/admin/users' && method === 'POST') {
       const auth = requireAccess(req, 'users', true), body = await readBody(req, 10000);
       if (!['admin', 'editor', 'viewer'].includes(body.role) || !validPassword(body.password)) throw problem(400, 'Choose a valid role and a password of 12–256 characters.');
       const credentials = await passwordHash(body.password);
-      const user = transaction(() => { requireAccess(req, 'users', true); const account = createUser({ ...body, role: body.role === 'admin' ? 'admin' : 'user' }, credentials); db.prepare("INSERT INTO site_members VALUES('parsen',?,?,?)").run(account.id, body.role, timestamp()); audit(auth.user.id, 'user_created', { userId: account.id }); return account; });
+      const user = transaction(() => { requireAccess(req, 'users', true); const account = createUser({ ...body, role: body.role === 'admin' ? 'admin' : 'user' }, credentials); db.prepare("INSERT INTO site_members VALUES('nimble',?,?,?)").run(account.id, body.role, timestamp()); audit(auth.user.id, 'user_created', { userId: account.id }); return account; });
       return send(res, 201, { user });
     }
     const memberMatch = pathname.match(/^\/api\/admin\/users\/(\d+)(\/reset-password)?$/);
@@ -433,7 +433,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req, 10000);
       if (method === 'PATCH' && !memberMatch[2]) {
         if (!['admin', 'editor', 'viewer'].includes(body.role)) throw problem(400, 'Choose a valid role.');
-        transaction(() => { db.prepare('UPDATE users SET role=? WHERE id=?').run(body.role === 'admin' ? 'admin' : 'user', id); db.prepare("UPDATE site_members SET role=? WHERE site_id='parsen' AND user_id=?").run(body.role, id); db.prepare('DELETE FROM sessions WHERE user_id=?').run(id); audit(auth.user.id, 'user_role_changed', { userId: id, role: body.role }); });
+        transaction(() => { db.prepare('UPDATE users SET role=? WHERE id=?').run(body.role === 'admin' ? 'admin' : 'user', id); db.prepare("UPDATE site_members SET role=? WHERE site_id='nimble' AND user_id=?").run(body.role, id); db.prepare('DELETE FROM sessions WHERE user_id=?').run(id); audit(auth.user.id, 'user_role_changed', { userId: id, role: body.role }); });
         return send(res, 200, { ok: true });
       }
       if (method === 'POST' && memberMatch[2]) {

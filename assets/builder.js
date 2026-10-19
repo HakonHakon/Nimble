@@ -10,7 +10,7 @@ const selected = () => state.document.blocks[state.selectedId];
 const editable = () => state.loaded && !state.locked && ['owner', 'admin', 'editor'].includes(state.role);
 const newId = prefix => prefix + '_' + crypto.randomUUID().replaceAll('-', '').slice(0, 16);
 const snapshot = () => copy(state.document);
-const draftKey = () => 'parsen-draft-v2-' + state.user.id;
+const draftKey = () => 'nimble-draft-v2-' + state.user.id;
 const input = (field, label, value = '', extra = '') => '<div class="field"><label>' + esc(label) + '<input data-field="' + field + '" value="' + esc(value) + '" ' + extra + '></label></div>';
 const area = (field, label, value = '') => '<div class="field"><label>' + esc(label) + '<textarea data-field="' + field + '">' + esc(value) + '</textarea></label></div>';
 function status(message, error = false) {
@@ -405,8 +405,8 @@ document.addEventListener('dragstart', event => {
   if (!editable()) return event.preventDefault();
   const type = event.target.closest('[data-add]')?.dataset.add;
   const id = event.target.closest('[data-block-id]')?.dataset.blockId;
-  if (type) { event.dataTransfer.setData('parsen/type', type); event.dataTransfer.effectAllowed = 'copy'; event.target.closest('[data-add]')?.classList.add('dragging'); }
-  if (id) { event.dataTransfer.setData('parsen/block', id); event.dataTransfer.effectAllowed = 'move'; event.target.closest('[data-block-id]')?.classList.add('dragging'); }
+  if (type) { event.dataTransfer.setData('nimble/type', type); event.dataTransfer.effectAllowed = 'copy'; event.target.closest('[data-add]')?.classList.add('dragging'); }
+  if (id) { event.dataTransfer.setData('nimble/block', id); event.dataTransfer.effectAllowed = 'move'; event.target.closest('[data-block-id]')?.classList.add('dragging'); }
 });
 document.addEventListener('dragend', event => { event.target.closest('[data-add],[data-block-id]')?.classList.remove('dragging'); clearDropIndicators(); });
 $('#siteCanvas').addEventListener('dragenter', event => {
@@ -417,7 +417,7 @@ $('#siteCanvas').addEventListener('dragenter', event => {
 $('#siteCanvas').addEventListener('dragover', event => {
   const zone = event.target.closest('[data-drop-zone]');
   if (!editable() || !zone) return;
-  event.preventDefault(); event.dataTransfer.dropEffect = Array.from(event.dataTransfer.types).includes('parsen/block') ? 'move' : 'copy';
+  event.preventDefault(); event.dataTransfer.dropEffect = Array.from(event.dataTransfer.types).includes('nimble/block') ? 'move' : 'copy';
   clearDropIndicators(); zone.classList.add('drag-over');
 });
 $('#siteCanvas').addEventListener('drop', event => {
@@ -426,7 +426,7 @@ $('#siteCanvas').addEventListener('drop', event => {
   event.preventDefault();
   clearDropIndicators();
   const before = zone.dataset.dropBefore || null;
-  const type = event.dataTransfer.getData('parsen/type'), move = event.dataTransfer.getData('parsen/block');
+  const type = event.dataTransfer.getData('nimble/type'), move = event.dataTransfer.getData('nimble/block');
   if (type) return addBlock(type, null, before);
   if (move) reorderBlock(move, before);
 });

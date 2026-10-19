@@ -15,7 +15,7 @@ test('public release: security, persistence, permissions, publishing, forms and 
   const owner = await f.login();
   let saved, editor, viewer, media;
   await t.test('private files, encoded separators and HTML authentication', async () => {
-    for (const route of ['/.env', '/backups/fixture.sqlite', '/%5cdata%5cparsen.sqlite', '/data/parsen.sqlite', '/server.mjs', '/lib/render.mjs', '/published/current.json', '/assets/../server.mjs', '/BUILDER.html']) assert.ok([400, 401, 403, 404].includes((await f.request(route)).status), route);
+    for (const route of ['/.env', '/backups/fixture.sqlite', '/%5cdata%5cnimble.sqlite', '/data/nimble.sqlite', '/server.mjs', '/lib/render.mjs', '/published/current.json', '/assets/../server.mjs', '/BUILDER.html']) assert.ok([400, 401, 403, 404].includes((await f.request(route)).status), route);
     assert.equal((await f.request('/%62uilder.html')).status, 302);
     assert.equal((await f.request('/control-panel.html')).status, 302);
     assert.equal((await f.request('/api/site')).status, 401);
@@ -148,20 +148,20 @@ test('public release: security, persistence, permissions, publishing, forms and 
   await t.test('backup integrity and a complete restored-instance drill', async () => {
     const backup = await f.runScript('backup.mjs'); assert.equal(backup.exit, 0, backup.output);
     const directory = JSON.parse(backup.output).backup;
-    const database = new DatabaseSync(path.join(directory, 'data', 'parsen.sqlite'), { readOnly: true });
+    const database = new DatabaseSync(path.join(directory, 'data', 'nimble.sqlite'), { readOnly: true });
     assert.equal(database.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); database.close();
     const target = path.join(f.directory, 'restored-storage');
     await f.stop();
-    const restored = await f.runScript('restore.mjs', [directory], { PARSEN_STORAGE_DIR: target, PARSEN_ALLOW_RESTORE: 'yes' });
+    const restored = await f.runScript('restore.mjs', [directory], { NIMBLE_STORAGE_DIR: target, NIMBLE_ALLOW_RESTORE: 'yes' });
     assert.equal(restored.exit, 0, restored.output);
-    await f.start({ PARSEN_STORAGE_DIR: target });
+    await f.start({ NIMBLE_STORAGE_DIR: target });
     const restoredOwner = await f.login();
     assert.equal((await f.request('/api/site', { auth: restoredOwner })).data.site.blocks.intro.title, 'A saved heading');
     assert.equal((await f.request('/')).status, 200);
     assert.equal((await f.request(media.url)).status, 200);
     assert.equal((await f.request('/api/messages', { auth: restoredOwner })).data.messages[0].name, 'Website visitor');
-    await fs.appendFile(path.join(directory, 'data', 'parsen.sqlite'), 'corruption');
-    const rejected = await f.runScript('restore.mjs', [directory], { PARSEN_STORAGE_DIR: path.join(f.directory, 'unused-target'), PARSEN_ALLOW_RESTORE: 'yes' });
+    await fs.appendFile(path.join(directory, 'data', 'nimble.sqlite'), 'corruption');
+    const rejected = await f.runScript('restore.mjs', [directory], { NIMBLE_STORAGE_DIR: path.join(f.directory, 'unused-target'), NIMBLE_ALLOW_RESTORE: 'yes' });
     assert.notEqual(rejected.exit, 0); assert.ok(rejected.output.includes('checksum'));
   });
 });

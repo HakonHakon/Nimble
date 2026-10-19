@@ -1,6 +1,6 @@
 import { backup } from './backup.mjs';
 import { pruneBackups } from './prune-backups.mjs';
-const hours = Number(process.env.PARSEN_BACKUP_INTERVAL_HOURS || 24);
+const hours = Number(process.env.NIMBLE_BACKUP_INTERVAL_HOURS || 24);
 if (!Number.isFinite(hours) || hours < 1 || hours > 168) throw new Error('Backup interval must be 1–168 hours.');
 const interval = hours * 3600000;
 async function run() {
