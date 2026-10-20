@@ -191,6 +191,16 @@ The PHP application creates its tables on the first request and stores uploaded 
 
 See [PHP_SHARED_HOSTING.md](PHP_SHARED_HOSTING.md) for PHP limits, security notes, and the complete shared-hosting checklist.
 
+## Support Nimble
+
+Nimble is free and open source. If it is useful to you and you would like to support continued maintenance, you can buy us a coffee:
+
+- [Send support via Revolut](https://revolut.me/hsadeghiafzal)
+
+- [Send support via PayPal](https://paypal.me/HakonAfzal)
+
+  ![PayPal QR code](docs/paypal-qr.svg)
+
 ## Security and operations
 
 - Never commit `.env`, `config.php`, database files, uploads, backups, or private setup tokens.
