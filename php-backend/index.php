@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/site-model.php';
 require_once __DIR__ . '/lib/render.php';
+require_once __DIR__ . '/lib/site-model-v2.php';
+require_once __DIR__ . '/lib/render-v2.php';
 
 $configFile = __DIR__ . '/config.php';
 if (!is_file($configFile)) {
@@ -351,9 +353,9 @@ try {
     }
     if ($path === '/api/messages' && $method === 'GET') { require_access('messages'); $before = max(0, (int)($_GET['before'] ?? PHP_INT_MAX)); $stmt = db()->prepare('SELECT * FROM messages WHERE id<? ORDER BY id DESC LIMIT 100'); $stmt->execute([$before]); $messages = $stmt->fetchAll(); json_response(200, ['messages' => $messages, 'nextBefore' => count($messages) === 100 ? (int)$messages[count($messages) - 1]['id'] : null]); }
     if (preg_match('#^/api/messages/[0-9]+$#', $path) && $method === 'DELETE') { $auth = require_access('messages', true); $id = (int)basename($path); db()->prepare('DELETE FROM messages WHERE id=?')->execute([$id]); audit((int)$auth['user']['id'], 'message_deleted', ['id' => $id]); json_response(200, ['ok' => true]); }
-    if ($path === '/api/contact-token' && $method === 'GET') { rate_limit('contact-token:' . client_ip(), 100); $site = published_site(); $block = (string)($_GET['block'] ?? ''); $found = false; if ($site) foreach ($site['pages'] as $page) if (in_array($block, $page['blocks'], true)) $found = true; if (!$site || !$found || (($site['blocks'][$block]['type'] ?? '') !== 'form')) nimble_error('This form is unavailable.', 404); json_response(200, ['token' => contact_token($block)]); }
+    if ($path === '/api/contact-token' && $method === 'GET') { rate_limit('contact-token:' . client_ip(), 100); $site = published_site(); $block = (string)($_GET['block'] ?? ''); if (!nimble_has_form($site, $block)) nimble_error('This form is unavailable.', 404); json_response(200, ['token' => contact_token($block)]); }
     if ($path === '/api/contact' && $method === 'POST') {
-        rate_limit('contact:' . client_ip(), 5); $body = request_body(15000, true); $token = contact_token_data((string)($body['token'] ?? '')); $site = published_site(); $found = false; if ($site) foreach ($site['pages'] as $page) if (in_array($token['block'] ?? '', $page['blocks'], true)) $found = true; if (!$site || !$found || (($site['blocks'][$token['block']]['type'] ?? '') !== 'form')) nimble_error('This form is unavailable.'); if (!empty($body['website'])) json_response(200, ['ok' => true]);
+        rate_limit('contact:' . client_ip(), 5); $body = request_body(15000, true); $token = contact_token_data((string)($body['token'] ?? '')); $site = published_site(); if (!nimble_has_form($site, (string)($token['block'] ?? ''))) nimble_error('This form is unavailable.'); if (!empty($body['website'])) json_response(200, ['ok' => true]);
         $name = trim((string)($body['name'] ?? '')); $email = strtolower(trim((string)($body['email'] ?? ''))); $message = trim((string)($body['message'] ?? '')); if ($name === '' || strlen($name) > 120 || !valid_email($email) || $message === '' || strlen($message) > 5000) nimble_error('Enter your name, a valid email, and a message of at most 5,000 characters.'); db()->prepare('INSERT INTO messages(name,email,message,page_id,created_at) VALUES(?,?,?,?,?)')->execute([$name, $email, $message, (string)$token['block'], timestamp()]); json_response(201, ['ok' => true]);
     }
     if (str_starts_with($path, '/api/')) nimble_error('Endpoint not found.', 404);

@@ -71,6 +71,7 @@ function nimble_block_id(string $id): bool
 
 function nimble_normalize(array $input): array
 {
+    if (($input['version'] ?? null) === 2) return nimble_v2_normalize($input);
     if (!isset($input['site'], $input['pages'], $input['blocks']) || !is_array($input['site']) || !is_array($input['pages']) || !is_array($input['blocks'])) nimble_error('A site needs metadata, a page list, and a block map.');
     if (count($input['pages']) < 1 || count($input['pages']) > 100 || count($input['blocks']) > 2000) nimble_error('Use 1–100 pages and no more than 2,000 blocks.');
     $settings = $input['site'];

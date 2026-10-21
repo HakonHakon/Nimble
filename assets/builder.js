@@ -75,6 +75,7 @@ async function flushSave() {
 }
 function hydrate(payload) {
   const document = Array.isArray(payload?.pages) ? payload : payload?.site;
+  if (document?.version === 2) throw new Error('This site uses the v2 element format and can only be edited in the new editor.');
   state.document = normalizeSite(document);
   state.pageId = state.document.pages.some(page => page.id === state.pageId) ? state.pageId : 'home';
   state.selectedId = page().blocks[0] || null;

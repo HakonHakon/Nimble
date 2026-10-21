@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "site": { "name": "Kitchen <sink> & \"co\"", "description": "Every v2 feature at once.", "lang": "nb-NO", "searchVisible": true, "socialImage": "https://example.test/og.png" },
+  "design": {
+    "colors": { "accent": "#FF5500", "brand-2": "#123456AA" },
+    "fonts": [
+      { "id": "heading", "source": "system", "family": "serif" },
+      { "id": "display", "source": "custom", "family": "Brand Sans", "src": "/uploads/brand-sans.woff2" }
+    ],
+    "textStyles": { "h1": { "desktop": { "font": "display", "fontSize": "64px", "fontWeight": 800, "lineHeight": 1.1 }, "mobile": { "fontSize": "36.50px" } }, "p9": { "desktop": {} } },
+    "body": { "font": "body", "color": "@ink", "background": "#fafafa" }
+  },
+  "breakpoints": [ { "id": "mobile", "name": "Phone", "max": 640 }, { "id": "tablet", "max": 1024 }, { "id": "small", "name": "Small", "max": 400 } ],
+  "assets": [ { "id": "a1", "name": "Photo", "kind": "image", "url": "/uploads/photo.jpg" } ],
+  "header": "hdr",
+  "footer": "ftr",
+  "pages": [
+    { "id": "home", "name": "Home", "path": "/", "children": ["hero", "grid"], "title": "Welcome", "description": "Home page" },
+    { "id": "about", "name": "About us", "path": "/about/team", "children": ["about"], "showHeader": false }
+  ],
+  "nodes": {
+    "hdr": { "type": "section", "tag": "header", "name": "Header", "children": ["logo", "nav"], "layout": { "desktop": { "mode": "stack", "direction": "row", "justify": "space-between", "align": "center", "padding": ["0", "24px", "0", "24px"], "minHeight": "80px", "contentWidth": "1200px" }, "mobile": { "direction": "column", "contentWidth": "auto" } }, "style": { "desktop": { "border": { "sides": ["bottom"] }, "shadow": [ { "x": "0", "y": "2px", "blur": "8px", "color": "#0000001a" }, { "x": "-1px", "y": "-1px", "blur": "0", "spread": "1px", "color": "@line", "inset": true } ] } } },
+    "logo": { "type": "text", "props": { "doc": [ { "t": "p", "c": [ { "token": "siteName", "text": "ignored", "link": { "to": "page", "page": "home" } } ] } ] }, "style": { "desktop": { "fontSize": "22px", "fontWeight": 800, "linkUnderline": false } } },
+    "nav": { "type": "menu", "props": { "orientation": "horizontal", "activeColor": "@accent" }, "hidden": { "small": true } },
+    "hero": { "type": "section", "name": "Hero", "children": ["copy", "pic", "blob"], "layout": { "desktop": { "mode": "grid", "columns": ["1.20fr", "minmax(200px, 1fr)"], "rows": ["auto"], "columnGap": "32px", "rowGap": "24px", "align": "center", "padding": ["80px", "40px", "80px", "40px"], "contentWidth": "1100px", "minHeight": "80vh" }, "tablet": { "columns": ["1fr"] }, "mobile": { "mode": "stack", "direction": "column" } }, "style": { "desktop": { "background": { "kind": "image", "src": "https://example.test/bg.jpg", "size": "cover", "position": "top-left", "overlay": "#00000066", "color": "@bg" } }, "small": { "background": { "kind": "gradient", "type": "radial", "stops": [ { "color": "@accent", "at": 0 }, { "color": "transparent", "at": 100 } ] } } } },
+    "copy": { "type": "container", "children": ["title", "list", "cta", "plain"], "layout": { "desktop": { "mode": "stack", "direction": "column", "align": "start", "rowGap": "1.5rem" } }, "place": { "desktop": { "cell": [1, 1, 1, 1] }, "tablet": { "cell": [2, 1, 1, 1] }, "mobile": { "order": 2, "alignSelf": "stretch" } } },
+    "title": { "type": "text", "props": { "doc": [ { "t": "h1", "align": "center", "c": [ { "text": "Big " }, { "text": "bold\nline", "b": true, "i": true, "u": true, "s": true, "color": "#00ff00" }, { "text": "<script>alert(1)</script>" } ] }, { "t": "p", "style": "p2", "c": [ { "text": "Mail ", "link": { "to": "email", "address": "hi@example.test" } }, { "text": "Call", "link": { "to": "phone", "number": "+47 22 33 44 55", "newTab": true } }, { "text": "Gone", "link": { "to": "page", "page": "missing" } }, { "text": "Anchor", "link": { "to": "anchor", "node": "grid" } } ] } ] }, "style": { "desktop": { "textAlign": "left", "letterSpacing": "-0.02em", "textTransform": "uppercase" } } },
+    "list": { "type": "text", "props": { "doc": [ { "t": "ul", "items": [ [ { "text": "One" } ], [ { "text": "Two", "link": { "to": "url", "href": "https://example.test/x?a=1&b=2", "newTab": true } } ] ] }, { "t": "ol", "style": "p3", "items": [] } ] } },
+    "cta": { "type": "button", "props": { "label": "Go → now", "link": { "to": "page", "page": "about", "anchor": "about" } }, "style": { "desktop": { "background": { "kind": "color", "color": "@accent" }, "color": "#fff", "padding": ["12px", "20px", "12px", "20px"], "radius": ["999px", "999px", "999px", "999px"], "opacity": 0.95 } }, "place": { "desktop": { "rotate": -2.5, "z": 3, "margin": ["auto", "-10px", "0", "1em"] } } },
+    "plain": { "type": "button", "props": { "label": "" } },
+    "pic": { "type": "image", "props": { "src": "/uploads/photo.jpg", "alt": "A \"quoted\" photo", "fit": "contain", "link": { "to": "asset", "href": "/uploads/photo.jpg" } }, "place": { "desktop": { "cell": [1, 2, 1, 1], "width": "100%", "height": "320px", "maxWidth": "auto", "maxHeight": "600px", "justifySelf": "end" }, "tablet": { "cell": [1, 1, 1, 1] } }, "hidden": { "desktop": false, "mobile": true, "small": false } },
+    "blob": { "type": "shape", "props": { "shape": "ellipse" }, "place": { "desktop": { "cell": [1, 1, 1, 2], "width": "120px", "height": "120px", "alignSelf": "start", "z": 0 } }, "style": { "desktop": { "background": { "kind": "gradient", "angle": 45.25, "stops": [ { "color": "#a0f1de", "at": 0 }, { "color": "@brand-2", "at": 62.5 } ] }, "border": { "width": "2px", "style": "dashed", "color": "#000000" } } }, "locked": true },
+    "grid": { "type": "section", "children": ["video", "yt", "gallery", "form", "spacer", "line", "card"], "layout": { "desktop": { "mode": "grid", "columns": ["repeat(auto-fit, minmax(240px, 1fr))"], "columnGap": "20px", "padding": ["40px", "20px", "40px", "20px"] } } },
+    "video": { "type": "video", "props": { "src": "/uploads/clip.mp4", "poster": "/uploads/poster.jpg", "autoplay": true, "loop": true, "controls": false } },
+    "yt": { "type": "video", "props": { "src": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "title": "Clip" } },
+    "gallery": { "type": "gallery", "props": { "alt": "Gallery", "minItemWidth": "150px", "itemHeight": "200px", "gap": "8px" } },
+    "form": { "type": "form", "props": { "submitLabel": "Send", "note": "" } },
+    "spacer": { "type": "spacer", "place": { "desktop": { "height": "40px" }, "mobile": { "height": "0" } } },
+    "line": { "type": "divider", "style": { "desktop": { "color": "@line" } } },
+    "card": { "type": "container", "tag": "article", "children": ["inner"], "layout": { "desktop": { "mode": "grid" } }, "style": { "desktop": { "padding": ["1px", "1px", "1px", "1px"] } } },
+    "inner": { "type": "container", "children": [], "layout": { "desktop": { "mode": "stack", "wrap": true, "justify": "space-evenly" } } },
+    "about": { "type": "section", "children": ["about-text"], "layout": { "desktop": { "mode": "stack" } } },
+    "about-text": { "type": "text", "props": { "doc": [ { "t": "h2", "c": [ { "text": "About" } ] } ] }, "place": { "desktop": { "width": "auto" } } },
+    "ftr": { "type": "section", "tag": "footer", "children": ["copy-r"] },
+    "copy-r": { "type": "text", "props": { "doc": [ { "t": "p", "c": [ { "text": "© " }, { "token": "year" }, { "text": " " }, { "token": "siteName" } ] } ] } },
+    "orphan": { "type": "text", "props": { "doc": [] } }
+  }
+}

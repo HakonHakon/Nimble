@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
-import { normalizeSite, makeDefaultSite, escapeHtml } from './lib/site-model.mjs';
+import { normalizeSite, makeDefaultSite, escapeHtml, hasForm } from './lib/site-model.mjs';
 import { publishAtomic, currentRelease } from './lib/publish-atomic.mjs';
 import { pageHtml } from './lib/render.mjs';
 import { validPassword, passwordHash, checkPassword } from './lib/passwords.mjs';
@@ -199,7 +199,7 @@ function templateInput(body, current = null) {
   return { name, description, document };
 }
 function templateRow(id) { return db.prepare("SELECT * FROM templates WHERE id=? AND site_id='nimble'").get(id); }
-const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm' };
+const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm' };
 async function sendFile(req, res, filename, { html = false, immutable = false } = {}) {
   const info = await fs.stat(filename);
   if (!info.isFile()) throw problem(404, 'Not found.');
@@ -269,7 +269,9 @@ const assets = new Map([
   ['/assets/builder.js', 'assets/builder.js'], ['/assets/control-panel.js', 'assets/control-panel.js'],
   ['/assets/login.js', 'assets/login.js'], ['/assets/public.js', 'assets/public.js'],
   ['/assets/public.css', 'assets/public.css'], ['/assets/editor.css', 'assets/editor.css'],
-  ['/assets/site-model.mjs', 'lib/site-model.mjs'], ['/assets/render.mjs', 'lib/render.mjs']
+  ['/assets/site-model.mjs', 'lib/site-model.mjs'], ['/assets/render.mjs', 'lib/render.mjs'],
+  ['/assets/public-v2.css', 'assets/public-v2.css'], ['/assets/site-model-v2.mjs', 'lib/site-model-v2.mjs'],
+  ['/assets/render-v2.mjs', 'lib/render-v2.mjs'], ['/assets/migrate-v1.mjs', 'lib/migrate-v1.mjs'], ['/assets/nimble-spec.json', 'lib/nimble-spec.json']
 ]);
 const server = http.createServer(async (req, res) => {
   headers(res);
@@ -458,14 +460,14 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/contact-token' && method === 'GET') {
       rate('contact-token:' + clientIP(req), 100);
       const release = await currentRelease(published), block = url.searchParams.get('block');
-      if (!release?.site.pages.some(page => page.blocks.includes(block)) || release.site.blocks[block]?.type !== 'form') throw problem(404, 'This form is unavailable.');
+      if (!hasForm(release?.site, block)) throw problem(404, 'This form is unavailable.');
       return send(res, 200, { token: contactToken(block) });
     }
     if (pathname === '/api/contact' && method === 'POST') {
       rate('contact:' + clientIP(req), 5);
       const body = await readBody(req, 15000, true);
       const token = verifyContactToken(body.token), release = await currentRelease(published);
-      if (!release?.site.pages.some(page => page.blocks.includes(token.block)) || release.site.blocks[token.block]?.type !== 'form') throw problem(400, 'This form is unavailable.');
+      if (!hasForm(release?.site, token.block)) throw problem(400, 'This form is unavailable.');
       if (body.website) return send(res, 200, { ok: true });
       const name = String(body.name || '').trim(), email = emailValue(body.email), message = String(body.message || '').trim();
       if (!name || name.length > 120 || !validEmail(email) || !message || message.length > 5000) throw problem(400, 'Enter your name, a valid email, and a message of at most 5,000 characters.');

@@ -40,6 +40,7 @@ function nimble_render_block(array $site, array $block): string
 
 function nimble_render_page(array $site, array $page): string
 {
+    if (($site['version'] ?? null) === 2) return nimble_v2_render_page($site, $page);
     $e = 'nimble_escape'; $theme = NIMBLE_THEMES[$site['theme']] ?? NIMBLE_THEMES['purple'];
     $radius = !empty($site['site']['rounded']) ? '14px' : '0'; $bodyFont = NIMBLE_FONTS[$site['site']['bodyFont'] ?? 'sans']; $headingFont = NIMBLE_FONTS[$site['site']['headingFont'] ?? 'sans'];
     $style = ':root{--accent:' . $theme . ';--radius:' . $radius . ';font-family:' . $bodyFont . '}h1,h2,h3{font-family:' . $headingFont . '}';
