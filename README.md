@@ -51,6 +51,7 @@ Useful local URLs:
 
 - `/login.html` — sign in or create the first owner
 - `/builder.html` — visual website builder
+- `/editor.html` — the new element editor (preview): iframe canvas, layers, per-breakpoint design. Opening a classic site here converts it to the v2 format on the first change; see [docs/site-format-v2.md](docs/site-format-v2.md)
 - `/control-panel.html` — team members and contact enquiries
 - `/` — the public site after the first publish
 - `/api/health` — process health

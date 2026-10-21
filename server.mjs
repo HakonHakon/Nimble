@@ -478,8 +478,9 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) throw problem(404, 'Endpoint not found.');
     if (!['GET', 'HEAD'].includes(method)) throw problem(405, 'Method not allowed.');
     if (assets.has(pathname)) return await sendFile(req, res, path.join(root, assets.get(pathname)));
-    if (pathname === '/builder' || pathname === '/control-panel') return redirect(res, pathname + '.html');
-    if (['/builder.html', '/control-panel.html'].includes(pathname)) {
+    if (/^\/assets\/editor\/[a-z-]+\.(?:mjs|css)$/.test(pathname)) return await sendFile(req, res, path.join(root, 'assets', 'editor', path.basename(pathname)));
+    if (pathname === '/builder' || pathname === '/editor' || pathname === '/control-panel') return redirect(res, pathname + '.html');
+    if (['/builder.html', '/editor.html', '/control-panel.html'].includes(pathname)) {
       if (!identity(req)) return redirect(res, '/login.html?next=' + encodeURIComponent(pathname));
       requireAccess(req);
       return await sendFile(req, res, path.join(root, pathname.slice(1)), { html: true });
@@ -487,7 +488,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/login.html') return await sendFile(req, res, path.join(root, 'login.html'), { html: true });
     if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
     const release = await currentRelease(published);
-    if (pathname === '/robots.txt') return send(res, 200, 'User-agent: *\n' + (release?.site.site.searchVisible ? 'Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /control-panel.html\n' : 'Disallow: /\n'), 'text/plain; charset=utf-8');
+    if (pathname === '/robots.txt') return send(res, 200, 'User-agent: *\n' + (release?.site.site.searchVisible ? 'Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /editor.html\nDisallow: /control-panel.html\n' : 'Disallow: /\n'), 'text/plain; charset=utf-8');
     if (pathname === '/sitemap.xml' && release && publicOrigin) return send(res, 200, '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + release.site.pages.map(page => '<url><loc>' + escapeHtml(publicOrigin + (page.id === 'home' ? '/' : '/' + page.id + '.html')) + '</loc></url>').join('') + '</urlset>', 'application/xml; charset=utf-8');
     if (release) {
       const local = pathname.startsWith('/published/') ? pathname.slice(10) : pathname;

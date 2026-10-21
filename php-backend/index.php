@@ -360,9 +360,9 @@ try {
     }
     if (str_starts_with($path, '/api/')) nimble_error('Endpoint not found.', 404);
     if ($path === '/uploads/' || str_starts_with($path, '/uploads/')) serve_upload($path);
-    if ($path === '/builder' || $path === '/control-panel') redirect_to($path . '.html');
-    if (in_array($path, ['/builder.html', '/control-panel.html'], true)) { require_access(); $file = __DIR__ . $path; if (!is_file($file)) nimble_error('Not found.', 404); header('Content-Type: text/html; charset=utf-8'); header('Cache-Control: no-store'); readfile($file); exit; }
-    if ($path === '/robots.txt') { $site = published_site(); header('Content-Type: text/plain; charset=utf-8'); echo "User-agent: *\n" . (!empty($site['site']['searchVisible']) ? "Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /control-panel.html\n" : "Disallow: /\n"); exit; }
+    if ($path === '/builder' || $path === '/editor' || $path === '/control-panel') redirect_to($path . '.html');
+    if (in_array($path, ['/builder.html', '/editor.html', '/control-panel.html'], true)) { require_access(); $file = __DIR__ . $path; if (!is_file($file)) nimble_error('Not found.', 404); header('Content-Type: text/html; charset=utf-8'); header('Cache-Control: no-store'); readfile($file); exit; }
+    if ($path === '/robots.txt') { $site = published_site(); header('Content-Type: text/plain; charset=utf-8'); echo "User-agent: *\n" . (!empty($site['site']['searchVisible']) ? "Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /editor.html\nDisallow: /control-panel.html\n" : "Disallow: /\n"); exit; }
     $site = published_site(); if ($path === '/sitemap.xml' && $site) { header('Content-Type: application/xml; charset=utf-8'); $xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'; foreach ($site['pages'] as $page) $xml .= '<url><loc>' . nimble_escape(cfg('public_url') . ($page['id'] === 'home' ? '/' : '/' . $page['id'] . '.html')) . '</loc></url>'; echo $xml . '</urlset>'; exit; }
     if ($site) { $page = public_page_for($path, $site); if ($page) html_response(nimble_render_page($site, $page)); }
     if ($path === '/') html_response('<!doctype html><title>Nimble</title><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/assets/public.css"><main class="wrap block"><h1>Nimble</h1><p>Your new website is on its way.</p><a href="/login.html">Team sign in</a></main>');

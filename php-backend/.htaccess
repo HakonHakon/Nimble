@@ -22,7 +22,7 @@ DirectoryIndex index.php
 
 RewriteEngine On
 RewriteRule ^(?:lib|storage|scripts|test|node_modules)(?:/|$) - [F,L,NC]
-RewriteRule ^(?:api(?:/|$)|uploads(?:/|$)|published(?:/|$)|builder(?:\.html)?$|control-panel(?:\.html)?$|index\.html$|robots\.txt$|sitemap\.xml$) index.php [QSA,L,NC]
+RewriteRule ^(?:api(?:/|$)|uploads(?:/|$)|published(?:/|$)|builder(?:\.html)?$|editor(?:\.html)?$|control-panel(?:\.html)?$|index\.html$|robots\.txt$|sitemap\.xml$) index.php [QSA,L,NC]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]

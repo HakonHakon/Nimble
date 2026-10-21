@@ -16,8 +16,11 @@ Copy-Item -LiteralPath (Join-Path $root 'php-backend\config.example.php') -Desti
 Copy-Item -LiteralPath (Join-Path $root 'php-backend\storage\.htaccess') -Destination (Join-Path $release 'storage\.htaccess')
 Copy-Item -LiteralPath (Join-Path $root 'php-backend\lib\site-model.php'), (Join-Path $root 'php-backend\lib\render.php'), (Join-Path $root 'php-backend\lib\site-model-v2.php'), (Join-Path $root 'php-backend\lib\render-v2.php'), (Join-Path $root 'lib\nimble-spec.json') -Destination (Join-Path $release 'lib')
 Copy-Item -LiteralPath (Join-Path $root 'PHP_SHARED_HOSTING.md') -Destination (Join-Path $release 'README.md')
-Copy-Item -LiteralPath (Join-Path $root 'builder.html'), (Join-Path $root 'login.html'), (Join-Path $root 'control-panel.html') -Destination $release
+Copy-Item -LiteralPath (Join-Path $root 'builder.html'), (Join-Path $root 'editor.html'), (Join-Path $root 'login.html'), (Join-Path $root 'control-panel.html') -Destination $release
 Copy-Item -LiteralPath (Join-Path $root 'assets\builder.js'), (Join-Path $root 'assets\control-panel.js'), (Join-Path $root 'assets\login.js'), (Join-Path $root 'assets\public.js'), (Join-Path $root 'assets\public.css'), (Join-Path $root 'assets\editor.css'), (Join-Path $root 'assets\public-v2.css'), (Join-Path $root 'lib\site-model.mjs'), (Join-Path $root 'lib\render.mjs'), (Join-Path $root 'lib\site-model-v2.mjs'), (Join-Path $root 'lib\render-v2.mjs'), (Join-Path $root 'lib\migrate-v1.mjs'), (Join-Path $root 'lib\nimble-spec.json') -Destination (Join-Path $release 'assets')
+
+New-Item -ItemType Directory -Path (Join-Path $release 'assets\editor') -Force | Out-Null
+Copy-Item -Path (Join-Path $root 'assets\editor\*') -Include '*.mjs', '*.css' -Destination (Join-Path $release 'assets\editor')
 
 Compress-Archive -Path (Join-Path $release '*') -DestinationPath $archive -CompressionLevel Optimal
 Write-Output "Created $archive"
