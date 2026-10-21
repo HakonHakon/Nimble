@@ -1,31 +1,44 @@
 // Canvas: the page renders inside a sandboxed same-origin iframe with the exact published HTML and CSS,
-// so breakpoint media queries apply for real. Selection chrome lives in an overlay above the iframe.
-import { renderNode, siteCss, pageRoots } from '/assets/render-v2.mjs';
+// so breakpoint media queries apply for real. Selection chrome, handles, guides and gesture feedback
+// live in an overlay above the iframe that uses the same (iframe) coordinates.
+import { renderNode, siteCss, pageRoots, createCssCache } from '/assets/render-v2.mjs';
 import { label } from './tree.mjs';
+import { layoutBox, rotationOf, gridGeometry, isGrid } from './geometry.mjs';
 
-const EDITOR_CSS = 'html,body{min-height:100%}iframe,video{pointer-events:none}a,button,summary{cursor:default}'
+const EDITOR_CSS = 'html,body{min-height:100%}iframe,video{pointer-events:none}a,button,summary{cursor:default}body{-webkit-user-select:none;user-select:none}'
   + '.t-section:empty,.t-container:empty{min-height:72px;outline:1px dashed #c8c5d7;outline-offset:-1px}'
   + '.t-image:empty{min-height:120px;background:repeating-linear-gradient(45deg,#f1f0f6 0 10px,#e7e5f0 10px 20px)}'
   + '.t-text:empty{min-height:1.4em}';
 
-export function createCanvas({ frame, overlay, onSelect, onHover, onKey }) {
+export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, onScroll }) {
   let currentScale = 1, doc = null, page = null, hoverId = null, selectedId = null, ready = null, scheduled = false;
-  const year = new Date().getFullYear();
+  let gesture = null, gridlines = false, guides = { x: [], y: [] };
+  const year = new Date().getFullYear(), cssCache = createCssCache();
   const frameDoc = () => frame.contentDocument;
   const element = id => id ? frameDoc()?.getElementById(id) : null;
   const target = event => event.target?.closest?.('.n');
+  const layer = name => {
+    let item = overlay.querySelector('.' + name);
+    if (!item) { item = document.createElement('div'); item.className = name; overlay.append(item); }
+    return item;
+  };
 
   function boot() {
     ready = new Promise(resolve => {
       frame.addEventListener('load', () => {
         const d = frameDoc();
-        d.addEventListener('pointermove', event => { const id = target(event)?.id || null; if (id !== hoverId) { hoverId = id; onHover(id); schedule(); } });
+        d.addEventListener('pointermove', event => {
+          if (gesture) return;
+          const id = target(event)?.id || null;
+          if (id !== hoverId) { hoverId = id; onHover(id); schedule(); }
+        });
         d.addEventListener('pointerleave', () => { hoverId = null; onHover(null); schedule(); });
-        d.addEventListener('click', event => { event.preventDefault(); const id = target(event)?.id || null; onSelect(id, { source: 'canvas', event }); }, true);
+        d.addEventListener('pointerdown', event => { if (event.button === 0) onPointerDown(event, target(event)?.id || null); }, true);
+        d.addEventListener('click', event => event.preventDefault(), true);
         d.addEventListener('submit', event => event.preventDefault(), true);
         d.addEventListener('dragstart', event => event.preventDefault(), true);
         d.addEventListener('keydown', event => onKey(event));
-        d.addEventListener('scroll', schedule, { passive: true });
+        d.addEventListener('scroll', () => { schedule(); onScroll?.(); }, { passive: true });
         d.addEventListener('load', schedule, true);
         resolve();
       }, { once: true });
@@ -34,10 +47,15 @@ export function createCanvas({ frame, overlay, onSelect, onHover, onKey }) {
       + '<link rel="stylesheet" href="/assets/public-v2.css"><style id="nimble-site"></style><style>' + EDITOR_CSS + '</style></head>'
       + '<body><div id="nimble-root"></div></body></html>';
     new ResizeObserver(schedule).observe(frame);
-    addEventListener('resize', schedule);
+    overlay.addEventListener('pointerdown', event => {
+      const handle = event.target.closest('[data-handle]');
+      if (handle) { event.preventDefault(); event.stopPropagation(); onHandleDown(event, handle.dataset.handle); return; }
+      const guide = event.target.closest('[data-guide]');
+      if (guide) { event.preventDefault(); onGuideDown(event, guide.dataset.guide, Number(guide.dataset.index)); }
+    });
   }
   const options = () => ({ year });
-  function css() { frameDoc().getElementById('nimble-site').textContent = siteCss(doc, pageRoots(doc, page)); }
+  function css() { frameDoc().getElementById('nimble-site').textContent = siteCss(doc, pageRoots(doc, page), cssCache); }
   function renderAll() {
     const d = frameDoc();
     d.documentElement.lang = doc.site.lang;
@@ -51,8 +69,7 @@ export function createCanvas({ frame, overlay, onSelect, onHover, onKey }) {
     const roots = [...ids].filter(id => doc.nodes[id]);
     const skip = new Set();
     for (const id of roots) {
-      let parent = element(id)?.parentElement?.closest('.n');
-      for (; parent; parent = parent.parentElement?.closest('.n')) if (ids.has(parent.id)) skip.add(id);
+      for (let parent = element(id)?.parentElement?.closest('.n'); parent; parent = parent.parentElement?.closest('.n')) if (ids.has(parent.id)) skip.add(id);
     }
     for (const id of roots) {
       if (skip.has(id)) continue;
@@ -67,25 +84,74 @@ export function createCanvas({ frame, overlay, onSelect, onHover, onKey }) {
     scheduled = true;
     requestAnimationFrame(() => { scheduled = false; draw(); });
   }
-  function box(className, id, withTag) {
-    const node = doc?.nodes[id], el = element(id);
-    let item = overlay.querySelector('.' + className);
+  function place(item, b, rotation = 0) {
+    Object.assign(item.style, { left: b.left + 'px', top: b.top + 'px', width: b.width + 'px', height: b.height + 'px', transform: rotation ? 'rotate(' + rotation + 'deg)' : '' });
+  }
+  function drawSelection() {
+    const node = doc?.nodes[selectedId], el = element(selectedId);
+    let item = overlay.querySelector('.ov-select');
     if (!node || !el || !el.getClientRects().length) { item?.remove(); return; }
-    if (!item) { item = document.createElement('div'); item.className = 'ov-box ' + className; overlay.append(item); }
-    const rect = el.getBoundingClientRect();
-    Object.assign(item.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
+    if (!item) { item = document.createElement('div'); item.className = 'ov-box ov-select'; item.innerHTML = '<span class="ov-tag"></span>'; overlay.append(item); }
+    const b = layoutBox(el), rotation = rotationOf(el);
+    place(item, b, rotation);
     item.classList.toggle('ov-locked', !!node.locked);
-    if (withTag) {
-      let tag = item.querySelector('.ov-tag');
-      if (!tag) { tag = document.createElement('span'); tag.className = 'ov-tag'; item.append(tag); }
-      tag.textContent = (node.locked ? '🔒 ' : '') + label(node);
-      tag.classList.toggle('ov-tag-below', rect.top < 22 / currentScale);
+    const tag = item.querySelector('.ov-tag');
+    tag.textContent = (node.locked ? '🔒 ' : '') + label(node);
+    tag.classList.toggle('ov-tag-below', b.top < 22 / currentScale);
+    const handles = gesture ? [] : getHandles(selectedId);
+    const key = handles.join(',');
+    if (item.dataset.handles !== key) {
+      item.querySelectorAll('[data-handle]').forEach(handle => handle.remove());
+      for (const name of handles) {
+        const handle = document.createElement('span');
+        handle.className = name === 'rotate' ? 'ov-rotate' : 'ov-handle ov-' + name;
+        handle.dataset.handle = name;
+        handle.title = name === 'rotate' ? 'Rotate (Shift: 15° steps)' : 'Resize (Shift: keep ratio, Alt: from centre)';
+        item.append(handle);
+      }
+      item.dataset.handles = key;
     }
+  }
+  function drawHover() {
+    const el = hoverId !== selectedId && !gesture ? element(hoverId) : null;
+    let item = overlay.querySelector('.ov-hover');
+    if (!el || !el.getClientRects().length) { item?.remove(); return; }
+    if (!item) { item = document.createElement('div'); item.className = 'ov-box ov-hover'; overlay.append(item); }
+    place(item, layoutBox(el), rotationOf(el));
+  }
+  function drawGrid() {
+    let el = element(selectedId);
+    if (el && !isGrid(el)) el = el.parentElement?.closest('.n');
+    if (!gridlines || !el || !isGrid(el)) { overlay.querySelector('.ov-grid')?.remove(); return; }
+    const geo = gridGeometry(el), item = layer('ov-grid');
+    item.innerHTML = geo.columns.map(([start, end]) => '<i class="ov-track" style="left:' + start + 'px;width:' + (end - start) + 'px;top:' + geo.content.top + 'px;height:' + geo.content.height + 'px"></i>').join('')
+      + geo.rows.map(([start, end]) => '<i class="ov-track ov-row" style="top:' + start + 'px;height:' + (end - start) + 'px;left:' + geo.content.left + 'px;width:' + geo.content.width + 'px"></i>').join('');
+  }
+  function drawGuides() {
+    const win = frameDoc().defaultView, item = layer('ov-guides');
+    const key = JSON.stringify(guides) + ':' + win.scrollX + ':' + win.scrollY;
+    if (item.dataset.key === key) return;
+    item.dataset.key = key;
+    item.innerHTML = guides.x.map((x, index) => '<i class="ov-guide ov-guide-x" data-guide="x" data-index="' + index + '" style="left:' + (x - win.scrollX) + 'px"></i>').join('')
+      + guides.y.map((y, index) => '<i class="ov-guide ov-guide-y" data-guide="y" data-index="' + index + '" style="top:' + (y - win.scrollY) + 'px"></i>').join('');
+  }
+  const rectStyle = (x1, y1, x2, y2) => 'left:' + Math.min(x1, x2) + 'px;top:' + Math.min(y1, y2) + 'px;width:' + Math.abs(x2 - x1) + 'px;height:' + Math.abs(y2 - y1) + 'px';
+  function drawGesture() {
+    const item = layer('ov-gesture');
+    if (!gesture) { item.innerHTML = ''; return; }
+    let html = '';
+    if (gesture.target) html += '<i class="ov-target" style="' + rectStyle(gesture.target.left, gesture.target.top, gesture.target.right, gesture.target.bottom) + '"></i>';
+    if (gesture.insert) html += '<i class="ov-insert" style="' + rectStyle(gesture.insert.x1, gesture.insert.y1, gesture.insert.x2, gesture.insert.y2) + '"></i>';
+    for (const line of gesture.lines || []) html += '<i class="ov-line ov-line-' + line.kind + '" style="' + rectStyle(line.x1, line.y1, line.x2, line.y2) + '"></i>';
+    for (const mark of gesture.labels || []) {
+      html += '<i class="ov-measure" style="' + rectStyle(mark.x1, mark.y1, mark.x2, mark.y2) + '"></i><b class="ov-label" style="left:' + (mark.x1 + mark.x2) / 2 + 'px;top:' + (mark.y1 + mark.y2) / 2 + 'px">' + mark.text + '</b>';
+    }
+    if (gesture.info) html += '<b class="ov-info" style="left:' + gesture.info.x + 'px;top:' + gesture.info.y + 'px">' + gesture.info.text + '</b>';
+    item.innerHTML = html;
   }
   function draw() {
     if (!doc || !frameDoc()) return;
-    box('ov-hover', hoverId !== selectedId ? hoverId : null, false);
-    box('ov-select', selectedId, true);
+    drawHover(); drawSelection(); drawGrid(); drawGuides(); drawGesture();
   }
   boot();
   return {
@@ -111,9 +177,19 @@ export function createCanvas({ frame, overlay, onSelect, onHover, onKey }) {
       currentScale = scale;
       overlay.style.setProperty('--ov-scale', String(1 / scale));
       schedule();
+      onScroll?.();
       return scale;
     },
+    get scale() { return currentScale; },
+    // Parent-document pointer coordinates → iframe viewport coordinates.
+    toFrame(clientX, clientY) { const r = frame.getBoundingClientRect(); return { x: (clientX - r.left) / currentScale, y: (clientY - r.top) / currentScale }; },
+    viewport() { const win = frameDoc().defaultView; return { width: win.innerWidth, height: win.innerHeight, scrollX: win.scrollX, scrollY: win.scrollY }; },
+    document: frameDoc,
+    frame,
     element,
+    setGesture(next) { gesture = next; schedule(); },
+    setGridlines(on) { gridlines = on; schedule(); },
+    setGuides(next) { guides = next; schedule(); },
     redraw: schedule
   };
 }

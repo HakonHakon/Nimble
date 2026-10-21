@@ -113,15 +113,6 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
     if (isset($style['shadow'])) $rules[$selector]['box-shadow'] = $style['shadow'] ? implode(',', array_map(static fn($item) => (!empty($item['inset']) ? 'inset ' : '') . $item['x'] . ' ' . $item['y'] . ' ' . $item['blur'] . ' ' . $item['spread'] . ' ' . nimble_v2_color_value($item['color']), $style['shadow'])) : 'none';
     if (isset($style['linkUnderline'])) $rules[$selector . ' a']['text-decoration'] = $style['linkUnderline'] ? 'underline' : 'none';
     if (isset($style['padding']) && !$container) $rules[$selector]['padding'] = implode(' ', $style['padding']);
-    $childLayout = ($layout['mode'] ?? null) === 'stack' ? $layout : array_merge($layout, ['mode' => 'grid']);
-    foreach ($node['children'] ?? [] as $child) nimble_v2_node_rules($rules, $site, $site['nodes'][$child], $childLayout, $ids, $index);
-}
-function nimble_v2_rules_at(array $site, array $roots, array $ids, int $index): array
-{
-    $rules = [];
-    foreach (nimble_v2_spec()['textStyleKeys'] as $key) nimble_v2_typography($rules, '.ts-' . $key, nimble_v2_cascade($site['design']['textStyles'][$key], $ids, $index));
-    foreach ($roots as $id) nimble_v2_node_rules($rules, $site, $site['nodes'][$id], null, $ids, $index);
-    return $rules;
 }
 function nimble_v2_css_text(array $rules): string
 {
@@ -141,6 +132,22 @@ function nimble_v2_diff(array $previous, array $current): array
     foreach ($previous as $selector => $declarations) foreach ($declarations as $property => $value) if (!isset($current[$selector][$property])) $result[$selector][$property] = NIMBLE_V2_RESET[$property] ?? 'unset';
     return $result;
 }
+function nimble_v2_chunk(array $ids, callable $build): array
+{
+    $parts = []; $previous = null;
+    foreach (array_keys($ids) as $index) {
+        $rules = [];
+        $build($rules, $index);
+        $parts[] = $index === 0 ? nimble_v2_css_text($rules) : nimble_v2_css_text(nimble_v2_diff($previous, $rules));
+        $previous = $rules;
+    }
+    return $parts;
+}
+function nimble_v2_parent_layout_at(array $parent, array $ids, int $index): array
+{
+    $layout = nimble_v2_cascade($parent['layout'] ?? null, $ids, $index);
+    return ($layout['mode'] ?? null) === 'stack' ? $layout : array_merge($layout, ['mode' => 'grid']);
+}
 function nimble_v2_site_css(array $site, array $roots): string
 {
     $spec = nimble_v2_spec(); $ids = nimble_v2_bp_ids($site);
@@ -153,14 +160,17 @@ function nimble_v2_site_css(array $site, array $roots): string
     $body = $site['design']['body'] ?? [];
     $bodyRules = array_values(array_filter([isset($body['font']) ? 'font-family:var(--f-' . $body['font'] . ')' : '', isset($body['color']) ? 'color:' . nimble_v2_color_value($body['color']) : '', isset($body['background']) ? 'background:' . nimble_v2_color_value($body['background']) : '']));
     $css .= 'body{' . implode(';', $bodyRules) . '}';
-    $previous = nimble_v2_rules_at($site, $roots, $ids, 0);
-    $css .= nimble_v2_css_text($previous);
-    foreach ($site['breakpoints'] as $offset => $bp) {
-        $current = nimble_v2_rules_at($site, $roots, $ids, $offset + 1);
-        $changed = nimble_v2_css_text(nimble_v2_diff($previous, $current));
-        if ($changed !== '') $css .= '@media (max-width:' . $bp['max'] . 'px){' . $changed . '}';
-        $previous = $current;
-    }
+    $out = array_fill(0, count($ids), '');
+    $add = static function (array $parts) use (&$out): void { foreach ($parts as $index => $part) $out[$index] .= $part; };
+    foreach ($spec['textStyleKeys'] as $key) $add(nimble_v2_chunk($ids, static function (array &$rules, int $index) use ($site, $ids, $key): void { nimble_v2_typography($rules, '.ts-' . $key, nimble_v2_cascade($site['design']['textStyles'][$key], $ids, $index)); }));
+    $walk = static function (string $id, ?array $parent) use (&$walk, &$add, $site, $ids): void {
+        $node = $site['nodes'][$id];
+        $add(nimble_v2_chunk($ids, static function (array &$rules, int $index) use ($site, $node, $parent, $ids): void { nimble_v2_node_rules($rules, $site, $node, $parent !== null ? nimble_v2_parent_layout_at($parent, $ids, $index) : null, $ids, $index); }));
+        foreach ($node['children'] ?? [] as $child) $walk($child, $node);
+    };
+    foreach ($roots as $id) $walk($id, null);
+    $css .= $out[0];
+    foreach ($site['breakpoints'] as $offset => $bp) if ($out[$offset + 1] !== '') $css .= '@media (max-width:' . $bp['max'] . 'px){' . $out[$offset + 1] . '}';
     return $css;
 }
 function nimble_v2_link_href(array $site, array $link): string

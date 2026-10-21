@@ -130,3 +130,9 @@ export function insertionTarget(doc, index, page, selectedId, type) {
   const last = page.children[page.children.length - 1];
   return last ? { parent: last, page: pageIndex, position: doc.nodes[last].children.length } : null;
 }
+// Merged per-breakpoint values in effect at `bp` (desktop first, then each smaller breakpoint).
+export function effective(map, bpIds, bp) {
+  const result = {};
+  for (const id of bpIds.slice(0, bpIds.indexOf(bp) + 1)) if (map?.[id]) Object.assign(result, map[id]);
+  return result;
+}

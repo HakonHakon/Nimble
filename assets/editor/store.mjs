@@ -1,6 +1,6 @@
 // Command store: every edit is a list of `set` operations with recorded inverses, so undo/redo
 // never needs whole-document snapshots. The result is validated with the same normalizer as the server.
-import { normalizeSiteV2 } from '/assets/site-model-v2.mjs';
+import { normalizeSiteV2, normalizeNodeV2 } from '/assets/site-model-v2.mjs';
 
 const clone = value => value === undefined ? undefined : structuredClone(value);
 export function getAt(target, path) {
@@ -39,10 +39,15 @@ function affected(ops) {
 export function createStore(initial, { limit = 200, onChange = () => {} } = {}) {
   let doc = normalizeSiteV2(initial);
   const undo = [], redo = [];
+  // Edits that only change an element's own properties are validated per element, keeping every
+  // other node object identical (the canvas caches CSS by node). Structural edits validate everything.
+  const local = ops => ops.every(({ path }) => path[0] === 'nodes' && path.length >= 3 && !['id', 'type', 'children'].includes(path[2]) && doc.nodes[path[1]]);
   const run = ops => {
     let next = doc;
     for (const op of ops) next = setAt(next, op.path, clone(op.value));
-    return normalizeSiteV2(next);
+    if (!local(ops)) return normalizeSiteV2(next);
+    for (const id of new Set(ops.map(op => op.path[1]))) next.nodes[id] = normalizeNodeV2(next, id);
+    return next;
   };
   const store = {
     get doc() { return doc; },

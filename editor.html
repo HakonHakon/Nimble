@@ -13,6 +13,11 @@
     <label class="page-picker"><span class="visually-hidden">Page</span><select id="pageSelect" aria-label="Page"></select></label>
     <div class="devices" id="devices" role="group" aria-label="Breakpoint"></div>
     <span class="width-label" id="widthLabel"></span>
+    <div class="view-toggles" role="group" aria-label="Canvas aids">
+      <button class="toggle" id="snapToggle" data-pref="snap" aria-pressed="true" title="Snap to guides and elements (hold Ctrl to bypass)">Snap</button>
+      <button class="toggle" id="rulerToggle" data-pref="rulers" aria-pressed="true" title="Rulers and guides">Rulers</button>
+      <button class="toggle" id="gridToggle" data-pref="grid" aria-pressed="false" title="Show grid lines of the selected layout">Grid</button>
+    </div>
     <div class="top-actions">
       <span class="save-state" id="saveState" role="status">Loading…</span>
       <button class="btn btn-icon" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>

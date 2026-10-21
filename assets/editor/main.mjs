@@ -7,11 +7,15 @@ import { createCanvas } from './canvas.mjs';
 import { createLayers } from './layers.mjs';
 import { createInspector } from './inspector.mjs';
 import { createAddPanel, createPagesPanel } from './panels.mjs';
+import { createTransformer } from './transform.mjs';
+import { createRulers } from './rulers.mjs';
 import { indexTree, ancestors, descendants, listOf, label } from './tree.mjs';
 
 const $ = selector => document.querySelector(selector);
 const app = { store: null, user: null, role: 'viewer', csrf: '', revision: 0, loaded: false, locked: false, dirty: false, pageId: 'home', bp: 'desktop', selected: null, tool: 'layers', converted: false };
-let saveTimer = null, saving = null, cachedIndex = null, cachedFor = null;
+let saveTimer = null, saving = null, cachedIndex = null, cachedFor = null, transformer = null, rulers = null;
+const prefs = (() => { try { return { snap: true, rulers: true, grid: false, ...JSON.parse(localStorage.getItem('nimble-editor-prefs') || '{}') }; } catch { return { snap: true, rulers: true, grid: false }; } })();
+const savePrefs = () => { try { localStorage.setItem('nimble-editor-prefs', JSON.stringify(prefs)); } catch {} };
 
 const editable = () => app.loaded && !app.locked && ['owner', 'admin', 'editor'].includes(app.role);
 const doc = () => app.store.doc;
@@ -110,15 +114,23 @@ async function upload(kind) {
 const ctx = {
   state: () => ({ doc: doc(), page: page(), pageIndex: doc().pages.indexOf(page()), bp: app.bp, bpIds: bpIds(), selected: app.selected, index: index() }),
   commit, select, remove, upload, editable,
-  openPage(id) { app.pageId = id; app.selected = null; canvas.select(null); canvas.render(doc(), page()); renderPanels(); renderChrome(); }
+  snapping: () => prefs.snap,
+  guides: () => rulers ? rulers.guides : { x: [], y: [] },
+  openPage(id) { app.pageId = id; app.selected = null; canvas.select(null); canvas.render(doc(), page()); renderPanels(); renderChrome(); rulers.load(); }
 };
 
 const canvas = createCanvas({
   frame: $('#canvasFrame'), overlay: $('#canvasOverlay'),
-  onSelect: id => select(id, { source: 'canvas' }),
+  onPointerDown: (event, id) => transformer.pointerDown(event, id),
+  onHandleDown: (event, handle) => transformer.handleDown(event, handle),
+  onGuideDown: (event, axis, position) => rulers.beginGuideDrag(event, axis, position),
+  getHandles: id => transformer ? transformer.handles(id) : [],
+  onScroll: () => rulers?.draw(),
   onHover: id => { document.querySelectorAll('.layer-row.hovered').forEach(row => row.classList.remove('hovered')); if (id) document.querySelector('.layer-row[data-id="' + CSS.escape(id) + '"]')?.classList.add('hovered'); },
   onKey: event => keyboard(event)
 });
+transformer = createTransformer(canvas, ctx);
+rulers = createRulers({ area: $('.canvas-area'), canvas, key: () => 'nimble-guides-' + (app.store ? page().id : 'home') + '-' + app.bp });
 const layers = createLayers($('#layersPanel'), ctx);
 const inspector = createInspector($('#inspector'), ctx);
 const addPanel = createAddPanel($('#addPanel'), ctx);
@@ -143,6 +155,7 @@ function renderChrome() {
   $('#undoBtn').disabled = !editable() || !app.store.canUndo;
   $('#redoBtn').disabled = !editable() || !app.store.canRedo;
   $('#publishBtn').disabled = !editable();
+  for (const [id, on] of [['#snapToggle', prefs.snap], ['#rulerToggle', prefs.rulers], ['#gridToggle', prefs.grid]]) $(id).setAttribute('aria-pressed', String(on));
   document.querySelectorAll('.rail-button[data-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tool === app.tool)));
   document.querySelectorAll('.tool-panel').forEach(panel => { panel.hidden = panel.dataset.panel !== app.tool; });
 }
@@ -150,6 +163,7 @@ function updateViewport() {
   const scroll = $('#canvasScroll'), width = deviceWidth(app.bp);
   const scale = canvas.setViewport(width, scroll.clientWidth - 48, scroll.clientHeight - 40);
   $('#widthLabel').textContent = width + 'px' + (scale < 1 ? ' · ' + Math.round(scale * 100) + '%' : '');
+  rulers.draw();
 }
 function renderPanels() {
   if (app.tool === 'layers') layers.render();
@@ -165,6 +179,14 @@ function keyboard(event) {
   if (mod && event.key.toLowerCase() === 'z') { event.preventDefault(); if (editable()) event.shiftKey ? app.store.redo() : app.store.undo(); return; }
   if (mod && event.key.toLowerCase() === 'y') { event.preventDefault(); if (editable()) app.store.redo(); return; }
   if ((event.key === 'Delete' || event.key === 'Backspace') && app.selected && !event.target.closest('.layers')?.querySelector('.layer-rename')) { event.preventDefault(); remove(app.selected); return; }
+  const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  if (arrows[event.key] && app.selected && !event.target.closest?.('.layers')) {
+    event.preventDefault();
+    const [dx, dy] = arrows[event.key], step = event.shiftKey ? 10 : 1;
+    transformer.nudge(dx * step, dy * step);
+    return;
+  }
+  if (event.key === 'Escape' && transformer.cancel()) return;
   if (event.key === 'Escape') { if ($('#modalRoot').firstChild) return closeDialog(); const parent = index().get(app.selected)?.parent; select(parent || null); }
 }
 document.addEventListener('keydown', keyboard);
@@ -200,7 +222,13 @@ async function publish() {
 
 document.addEventListener('click', event => {
   const bp = event.target.closest('[data-bp]');
-  if (bp && bp.closest('#devices')) { app.bp = bp.dataset.bp; renderChrome(); inspector.render(); layers.render(); return; }
+  if (bp && bp.closest('#devices')) { app.bp = bp.dataset.bp; renderChrome(); inspector.render(); layers.render(); rulers.load(); return; }
+  const toggle = event.target.closest('[data-pref]');
+  if (toggle) {
+    prefs[toggle.dataset.pref] = !prefs[toggle.dataset.pref]; savePrefs();
+    rulers.setVisible(prefs.rulers); canvas.setGridlines(prefs.grid); renderChrome();
+    return;
+  }
   const tool = event.target.closest('.rail-button[data-tool]');
   if (tool) { app.tool = tool.dataset.tool; renderChrome(); renderPanels(); return; }
   if (event.target.closest('#undoBtn')) return app.store.undo();
@@ -241,6 +269,7 @@ async function bootstrap() {
     status(editable() ? 'All changes saved' : 'Read-only access');
     renderChrome(); renderPanels();
     await canvas.render(doc(), page());
+    rulers.setVisible(prefs.rulers); canvas.setGridlines(prefs.grid); rulers.load();
     let draft;
     try { draft = JSON.parse(localStorage.getItem(draftKey())); } catch {}
     if (draft?.dirty && editable()) {
