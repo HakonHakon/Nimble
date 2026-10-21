@@ -10,7 +10,7 @@ const EDITOR_CSS = 'html,body{min-height:100%}iframe,video{pointer-events:none}a
   + '.t-image:empty{min-height:120px;background:repeating-linear-gradient(45deg,#f1f0f6 0 10px,#e7e5f0 10px 20px)}'
   + '.t-text:empty{min-height:1.4em}';
 
-export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, onScroll }) {
+export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, getColumnHandles = () => false, onScroll }) {
   let currentScale = 1, doc = null, page = null, hoverId = null, selectedId = null, ready = null, scheduled = false;
   let gesture = null, gridlines = false, guides = { x: [], y: [] };
   const year = new Date().getFullYear(), cssCache = createCssCache();
@@ -127,6 +127,17 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     item.innerHTML = geo.columns.map(([start, end]) => '<i class="ov-track" style="left:' + start + 'px;width:' + (end - start) + 'px;top:' + geo.content.top + 'px;height:' + geo.content.height + 'px"></i>').join('')
       + geo.rows.map(([start, end]) => '<i class="ov-track ov-row" style="top:' + start + 'px;height:' + (end - start) + 'px;left:' + geo.content.left + 'px;width:' + geo.content.width + 'px"></i>').join('');
   }
+  // Dividers between the columns of a selected grid container; dragging one resizes the two columns.
+  function drawColumnHandles() {
+    const el = element(selectedId);
+    if (gesture?.keepColumns !== true && (gesture || !el || !isGrid(el) || !getColumnHandles(selectedId))) { overlay.querySelector('.ov-cols')?.remove(); return; }
+    if (!el || !isGrid(el)) return;
+    const geo = gridGeometry(el), item = layer('ov-cols');
+    item.innerHTML = geo.columns.slice(0, -1).map(([, end], i) => {
+      const next = geo.columns[i + 1][0];
+      return '<i class="ov-col-handle" data-handle="col:' + i + '" title="Drag to resize columns" style="left:' + (end + next) / 2 + 'px;top:' + geo.content.top + 'px;height:' + geo.content.height + 'px"></i>';
+    }).join('');
+  }
   function drawGuides() {
     const win = frameDoc().defaultView, item = layer('ov-guides');
     const key = JSON.stringify(guides) + ':' + win.scrollX + ':' + win.scrollY;
@@ -151,7 +162,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
   }
   function draw() {
     if (!doc || !frameDoc()) return;
-    drawHover(); drawSelection(); drawGrid(); drawGuides(); drawGesture();
+    drawHover(); drawSelection(); drawGrid(); drawColumnHandles(); drawGuides(); drawGesture();
   }
   boot();
   return {

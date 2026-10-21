@@ -4,6 +4,7 @@ import { spec } from '/assets/site-model-v2.mjs';
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { TYPES, label, ancestors } from './tree.mjs';
 import { hiddenAt } from './layers.mjs';
+import { createLayoutPanel } from './layout-panel.mjs';
 
 const LABELS = {
   mode: 'Layout', columns: 'Columns', rows: 'Rows', rowGap: 'Row gap', columnGap: 'Column gap', direction: 'Direction', wrap: 'Wrap', justify: 'Justify', align: 'Align items',
@@ -43,6 +44,7 @@ function splitTracks(text) {
 }
 
 export function createInspector(root, ctx) {
+  const layoutPanel = createLayoutPanel(ctx);
   let tab = 'content', linkDraft = null, bgDraft = null;
   const colorOptions = () => Object.keys(ctx.state().doc.design.colors).map(key => '<option value="@' + esc(key) + '">').join('');
   const hexOf = value => {
@@ -204,18 +206,7 @@ export function createInspector(root, ctx) {
     const chain = ancestors(index, selected).map(id => '<button class="crumb' + (id === selected ? ' current' : '') + '" data-crumb="' + esc(id) + '">' + esc(label(doc.nodes[id])) + '</button>').join('<span>›</span>');
     let body = '';
     if (tab === 'content') body = spec.nodeTypes[node.type].props ? propFields(node) : '<p class="hint">' + esc(TYPES[node.type].label) + ' with ' + (node.children?.length || 0) + ' element(s). Use Add to place elements inside it, or drag them in Layers.</p>';
-    if (tab === 'layout') {
-      const place = index.get(selected);
-      if (spec.nodeTypes[node.type].container) {
-        const mode = cascade(node.layout, ctx.state().bpIds, bp, 'mode') || 'grid';
-        body += '<h3>' + esc(TYPES[node.type].label) + ' layout</h3>' + responsiveFields('layout', spec.layout, node, ['mode', ...(mode === 'stack' ? ['direction', 'wrap', 'justify', 'align'] : ['columns', 'rows', 'justify', 'align']), 'rowGap', 'columnGap', 'padding', 'minHeight', 'contentWidth']);
-      }
-      if (place?.parent) {
-        const parentMode = cascade(doc.nodes[place.parent].layout, ctx.state().bpIds, bp, 'mode') || 'grid';
-        body += '<h3>Position in ' + (parentMode === 'stack' ? 'stack' : 'grid') + '</h3>' + responsiveFields('place', spec.place, node, [...(parentMode === 'stack' ? ['alignSelf', 'order'] : ['cell', 'justifySelf', 'alignSelf']), 'margin', 'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight', 'rotate', 'z']);
-      }
-      if (!body) body = '<p class="hint">Sections fill the page width. Use their layout to arrange content.</p>';
-    }
+    if (tab === 'layout') body = layoutPanel.render(node);
     if (tab === 'design') body = responsiveFields('style', spec.style, node, Object.keys(spec.style).filter(key => !(key === 'padding' && spec.nodeTypes[node.type].container)));
     if (tab === 'settings') {
       const { bpIds } = ctx.state();
@@ -291,6 +282,7 @@ export function createInspector(root, ctx) {
   }
 
   root.addEventListener('click', event => {
+    if (event.target.closest('.lp') && layoutPanel.onClick(event, root)) return;
     const tabButton = event.target.closest('[data-tab]');
     if (tabButton) { tab = tabButton.dataset.tab; linkDraft = null; bgDraft = null; return render(); }
     const crumb = event.target.closest('[data-crumb]');
@@ -324,6 +316,7 @@ export function createInspector(root, ctx) {
     }
   });
   root.addEventListener('change', event => {
+    if (event.target.closest('.lp')) { layoutPanel.onChange(event, root); return; }
     if (!ctx.editable()) return;
     const target = event.target, field = target.closest('.field');
     if (!field) return;

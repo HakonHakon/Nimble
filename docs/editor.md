@@ -20,6 +20,42 @@ Open `/editor.html`. A site made with the classic builder is converted to the v2
 - **Locked elements** can still be selected and edited in the inspector, but they cannot be moved, resized or rotated.
 - Esc cancels a drag that is still in progress.
 
+## Layout (Layout tab)
+
+Sections and containers arrange their content in one of two ways:
+
+- **Grid**: rows and columns.
+  - Use the column presets (1–4 equal columns, 1:2, 2:1, auto-fit cards), or set each column and row in `fr`, `px`, `%` or `auto`.
+  - Adding or removing a track moves elements in removed cells back inside the grid.
+  - With a grid container selected, drag the pink dividers on the canvas to resize two neighbouring columns. Flexible (`fr`) columns keep their total.
+  - The preview shows which element sits in which cell; click one to select it.
+- **Stack**: elements follow each other vertically or horizontally, with direction, wrap, distribution and alignment controls.
+
+Every container has **gaps** (row and column can be linked) and **padding**. Padding sides are linked when they are equal; use the chain button to link or unlink them.
+
+Sections also have:
+
+- **Content width:** *Full width*, or *Boxed*, where the content stays centred within a maximum width while the background spans the page.
+- **Height:** fit the content, half screen, full screen, or a custom value.
+
+For the selected element, the Layout tab shows how it is positioned in its parent:
+
+- **In a grid:**
+  - **Docking:** 9-point docking, plus stretch width and height. Docking resets the margins, which are measured from the docked edge.
+  - **Grid cell:** row and column, row and column span, and *Span all columns*.
+- **In a stack:** alignment across the stack, and order. Below desktop, order applies only to that breakpoint and smaller.
+- **Size:** width and height in px, %, vw, vh, rem, em or auto, plus *Stretch to full width* and min/max size limits.
+- **Margin:** px, other units or `auto`.
+- **Rotation** and **layer order (z)**.
+
+Values are saved for the breakpoint you are editing. A dot marks a value set at this breakpoint, and × resets it to the inherited value.
+
+The **Add** panel includes layout presets:
+
+- Sections: boxed, full width, full screen and two-column. The two-column section switches to one column on mobile.
+- Grids: two columns and three columns. The three-column grid uses two columns on tablet and one on mobile.
+- Vertical and horizontal stacks, and a plain box.
+
 ## Keyboard
 
 | Keys | Action |

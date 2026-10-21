@@ -114,6 +114,8 @@ async function upload(kind) {
 const ctx = {
   state: () => ({ doc: doc(), page: page(), pageIndex: doc().pages.indexOf(page()), bp: app.bp, bpIds: bpIds(), selected: app.selected, index: index() }),
   commit, select, remove, upload, editable,
+  refresh: () => inspector.render(),
+  showLayout: () => inspector.setTab('layout'),
   snapping: () => prefs.snap,
   guides: () => rulers ? rulers.guides : { x: [], y: [] },
   openPage(id) { app.pageId = id; app.selected = null; canvas.select(null); canvas.render(doc(), page()); renderPanels(); renderChrome(); rulers.load(); }
@@ -125,6 +127,7 @@ const canvas = createCanvas({
   onHandleDown: (event, handle) => transformer.handleDown(event, handle),
   onGuideDown: (event, axis, position) => rulers.beginGuideDrag(event, axis, position),
   getHandles: id => transformer ? transformer.handles(id) : [],
+  getColumnHandles: id => transformer ? transformer.columnHandles(id) : false,
   onScroll: () => rulers?.draw(),
   onHover: id => { document.querySelectorAll('.layer-row.hovered').forEach(row => row.classList.remove('hovered')); if (id) document.querySelector('.layer-row[data-id="' + CSS.escape(id) + '"]')?.classList.add('hovered'); },
   onKey: event => keyboard(event)

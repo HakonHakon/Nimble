@@ -202,7 +202,48 @@ export function createTransformer(canvas, ctx) {
   }
 
   // ---- Resize and rotate (handles live in the parent document overlay) ----
+  function columnHandles(id) {
+    if (!id || !ctx.editable() || !node(id)?.children) return false;
+    const layout = effective(node(id).layout, state().bpIds, state().bp);
+    return (layout.mode || 'grid') === 'grid' && (layout.columns || ['1fr']).length > 1 && !(layout.columns || []).some(track => track.startsWith('repeat('));
+  }
+  // Dragging the divider between columns i and i+1 changes only those two tracks.
+  function columnDown(event, index) {
+    const id = state().selected, el = canvas.element(id);
+    const geo = gridGeometry(el), columns = effective(node(id).layout, state().bpIds, state().bp).columns.slice();
+    const left = geo.columns[index], right = geo.columns[index + 1], gap = right[0] - left[1];
+    const total = (left[1] - left[0]) + (right[1] - right[0]);
+    const release = shield('col-resize');
+    const frOf = track => /^\d+(\.\d+)?fr$/.test(track) ? parseFloat(track) : null;
+    let result = null;
+    const move = moveEvent => {
+      const x = canvas.toFrame(moveEvent.clientX, moveEvent.clientY).x;
+      const leftWidth = Math.max(24, Math.min(total - 24, x - gap / 2 - left[0])), rightWidth = total - leftWidth;
+      const next = columns.slice(), a = frOf(columns[index]), b = frOf(columns[index + 1]);
+      if (a !== null && b !== null) {
+        const sum = a + b;
+        next[index] = Math.round(sum * leftWidth / total * 100) / 100 + 'fr';
+        next[index + 1] = Math.round((sum - parseFloat(next[index])) * 100) / 100 + 'fr';
+      } else {
+        // A flexible (fr) track absorbs the change; fixed and auto tracks become pixel widths.
+        next[index] = a !== null ? columns[index] : Math.round(leftWidth) + 'px';
+        next[index + 1] = b !== null ? columns[index + 1] : Math.round(rightWidth) + 'px';
+      }
+      result = next;
+      el.style.gridTemplateColumns = next.join(' ');
+      canvas.setGesture({ keepColumns: true, info: { x: x + 8, y: geo.content.top + 8, text: next[index] + ' | ' + next[index + 1] } });
+    };
+    const up = () => {
+      document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
+      release();
+      el.style.gridTemplateColumns = '';
+      canvas.setGesture(null);
+      if (result) ctx.commit([{ path: ['nodes', id, 'layout', state().bp, 'columns'], value: result }], { label: 'Resize columns' });
+    };
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+  }
   function handleDown(event, handle) {
+    if (handle.startsWith('col:')) return columnDown(event, Number(handle.slice(4)));
     const id = state().selected;
     if (!id || !ctx.editable() || node(id).locked) return;
     const el = canvas.element(id);
@@ -324,5 +365,5 @@ export function createTransformer(canvas, ctx) {
     canvas.setGesture(null);
     return true;
   }
-  return { pointerDown, handleDown, handles, nudge, cancel, get busy() { return !!active; } };
+  return { pointerDown, handleDown, handles, columnHandles, nudge, cancel, get busy() { return !!active; } };
 }

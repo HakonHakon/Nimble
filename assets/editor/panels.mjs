@@ -3,8 +3,14 @@ import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { ADDABLE, TYPES, createNode, insertionTarget, newId, descendants } from './tree.mjs';
 
 export function createAddPanel(root, ctx) {
-  root.innerHTML = '<div class="panel-head"><h2 class="panel-title">Add elements</h2></div><p class="panel-subtitle">Elements go into the selected container, or after the selected element.</p><div class="add-grid">'
-    + ADDABLE.map(([kind, text]) => '<button class="add-item" data-add="' + kind + '"><span aria-hidden="true">' + (TYPES[kind === 'heading' ? 'text' : kind]?.icon || 'H') + '</span>' + esc(text) + '</button>').join('') + '</div>';
+  const groups = [];
+  for (const [kind, text, group = 'Elements'] of ADDABLE) {
+    if (!groups.length || groups[groups.length - 1].name !== group) groups.push({ name: group, items: [] });
+    groups[groups.length - 1].items.push([kind, text]);
+  }
+  const icon = kind => ({ heading: 'H', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭' })[kind] || TYPES[kind]?.icon || '•';
+  root.innerHTML = '<div class="panel-head"><h2 class="panel-title">Add elements</h2></div><p class="panel-subtitle">Elements go into the selected container, or after the selected element.</p>'
+    + groups.map(group => '<h3>' + esc(group.name) + '</h3><div class="add-grid">' + group.items.map(([kind, text]) => '<button class="add-item" data-add="' + kind + '"><span aria-hidden="true">' + icon(kind) + '</span>' + esc(text) + '</button>').join('') + '</div>').join('');
   root.addEventListener('click', event => {
     const button = event.target.closest('[data-add]');
     if (!button || !ctx.editable()) return;
@@ -23,6 +29,8 @@ export function createAddPanel(root, ctx) {
       ops.push({ path: target.parent === null ? ['pages', target.page, 'children'] : ['nodes', target.parent, 'children'], value: next });
     }
     if (ctx.commit(ops, { label: 'Add ' + button.textContent.trim() })) ctx.select(id, { source: 'add', reveal: true });
+    else return;
+    if (node.children) ctx.showLayout?.();
   });
   return { render() {} };
 }

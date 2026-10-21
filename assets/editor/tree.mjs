@@ -85,13 +85,26 @@ export function moveOps(doc, index, id, target) {
 }
 
 const SECTION_LAYOUT = { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['60px', '35px', '60px', '35px'], contentWidth: '1022px' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } };
+// [kind, label, group] — kinds map to element types in createNode.
 export const ADDABLE = [
-  ['section', 'Section'], ['container', 'Container'], ['heading', 'Heading'], ['text', 'Paragraph'], ['button', 'Button'],
+  ['section', 'Section (boxed)', 'Sections'], ['section-full', 'Section (full width)', 'Sections'], ['section-screen', 'Full-screen section', 'Sections'], ['section-columns', 'Two-column section', 'Sections'],
+  ['grid', 'Grid', 'Layout'], ['grid-3', '3-column grid', 'Layout'], ['stack', 'Vertical stack', 'Layout'], ['stack-row', 'Horizontal stack', 'Layout'], ['container', 'Box', 'Layout'],
+  ['heading', 'Heading'], ['text', 'Paragraph'], ['button', 'Button'],
   ['image', 'Image'], ['video', 'Video'], ['gallery', 'Gallery'], ['shape', 'Shape'], ['divider', 'Line'], ['spacer', 'Spacer'],
   ['menu', 'Menu'], ['form', 'Contact form']
 ];
+const KIND_TYPES = { heading: 'text', 'section-full': 'section', 'section-screen': 'section', 'section-columns': 'section', grid: 'container', 'grid-3': 'container', stack: 'container', 'stack-row': 'container' };
+const LAYOUT_PRESETS = {
+  'section-full': { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['60px', '35px', '60px', '35px'], contentWidth: 'auto' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } },
+  'section-screen': { desktop: { mode: 'grid', columns: ['1fr'], align: 'center', padding: ['60px', '35px', '60px', '35px'], contentWidth: '1022px', minHeight: '100vh' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } },
+  'section-columns': { desktop: { mode: 'grid', columns: ['1fr', '1fr'], columnGap: '40px', rowGap: '24px', align: 'center', padding: ['60px', '35px', '60px', '35px'], contentWidth: '1022px' }, mobile: { columns: ['1fr'], padding: ['40px', '20px', '40px', '20px'] } },
+  grid: { desktop: { mode: 'grid', columns: ['1fr', '1fr'], columnGap: '20px', rowGap: '20px', padding: ['16px', '16px', '16px', '16px'], minHeight: '160px' }, mobile: { columns: ['1fr'] } },
+  'grid-3': { desktop: { mode: 'grid', columns: ['1fr', '1fr', '1fr'], columnGap: '20px', rowGap: '20px', padding: ['16px', '16px', '16px', '16px'], minHeight: '160px' }, tablet: { columns: ['1fr', '1fr'] }, mobile: { columns: ['1fr'] } },
+  stack: { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '12px', padding: ['16px', '16px', '16px', '16px'] } },
+  'stack-row': { desktop: { mode: 'stack', direction: 'row', align: 'center', wrap: true, columnGap: '16px', rowGap: '12px', padding: ['16px', '16px', '16px', '16px'] } }
+};
 export function createNode(doc, kind) {
-  const type = kind === 'heading' ? 'text' : kind;
+  const type = KIND_TYPES[kind] || kind;
   const id = newId(doc, type === 'section' ? 'section' : type);
   const firstImage = doc.assets.find(asset => asset.kind === 'image')?.url || '';
   const full = { desktop: { width: '100%' } };
@@ -111,7 +124,15 @@ export function createNode(doc, kind) {
     menu: { type, props: { orientation: 'horizontal', activeColor: '@accent' } },
     form: { type, props: {}, place: { desktop: { width: '100%', maxWidth: '650px' } } }
   };
-  return { id, node: { id, ...nodes[type] } };
+  const node = { id, ...nodes[type] };
+  if (LAYOUT_PRESETS[kind]) {
+    // Presets only define breakpoints that exist on this site.
+    const ids = new Set(['desktop', ...doc.breakpoints.map(bp => bp.id)]);
+    node.layout = Object.fromEntries(Object.entries(structuredClone(LAYOUT_PRESETS[kind])).filter(([bp]) => ids.has(bp)));
+    node.name = ADDABLE.find(([item]) => item === kind)[1];
+    if (type === 'container') node.style = { desktop: { border: { width: '1px', style: 'dashed', color: '@line' } } };
+  }
+  return { id, node };
 }
 // Where a new element goes: inside the selected container, after the selected element, or into the last section.
 export function insertionTarget(doc, index, page, selectedId, type) {
