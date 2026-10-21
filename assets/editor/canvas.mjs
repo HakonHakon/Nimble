@@ -10,8 +10,8 @@ const EDITOR_CSS = 'html,body{min-height:100%}iframe,video{pointer-events:none}a
   + '.t-image:empty{min-height:120px;background:repeating-linear-gradient(45deg,#f1f0f6 0 10px,#e7e5f0 10px 20px)}'
   + '.t-text:empty{min-height:1.4em}';
 
-export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, getColumnHandles = () => false, onScroll }) {
-  let currentScale = 1, doc = null, page = null, hoverId = null, selectedId = null, ready = null, scheduled = false;
+export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, getColumnHandles = () => false, onScroll, onContextMenu = () => {} }) {
+  let currentScale = 1, doc = null, page = null, hoverId = null, selectedId = null, others = [], ready = null, scheduled = false;
   let gesture = null, gridlines = false, guides = { x: [], y: [] };
   const year = new Date().getFullYear(), cssCache = createCssCache();
   const frameDoc = () => frame.contentDocument;
@@ -35,6 +35,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
         d.addEventListener('pointerleave', () => { hoverId = null; onHover(null); schedule(); });
         d.addEventListener('pointerdown', event => { if (event.button === 0) onPointerDown(event, target(event)?.id || null); }, true);
         d.addEventListener('click', event => event.preventDefault(), true);
+        d.addEventListener('contextmenu', event => { event.preventDefault(); onContextMenu(event, target(event)?.id || null); });
         d.addEventListener('submit', event => event.preventDefault(), true);
         d.addEventListener('dragstart', event => event.preventDefault(), true);
         d.addEventListener('keydown', event => onKey(event));
@@ -96,13 +97,18 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     place(item, b, rotation);
     item.classList.toggle('ov-locked', !!node.locked);
     const tag = item.querySelector('.ov-tag');
-    tag.textContent = (node.locked ? '🔒 ' : '') + label(node);
+    tag.textContent = (node.locked ? '🔒 ' : '') + label(node) + (others.length ? ' +' + others.length : '');
     tag.classList.toggle('ov-tag-below', b.top < 22 / currentScale);
-    const handles = gesture ? [] : getHandles(selectedId);
+    const handles = gesture || others.length ? [] : getHandles(selectedId);
+    // Sections are moved by dragging their name tag.
+    const movable = handles.includes('move');
+    tag.classList.toggle('ov-tag-drag', movable);
+    if (movable) { tag.dataset.handle = 'move'; tag.title = 'Drag to move the section up or down'; } else { delete tag.dataset.handle; tag.removeAttribute('title'); }
     const key = handles.join(',');
     if (item.dataset.handles !== key) {
-      item.querySelectorAll('[data-handle]').forEach(handle => handle.remove());
+      item.querySelectorAll('.ov-handle,.ov-rotate').forEach(handle => handle.remove());
       for (const name of handles) {
+        if (name === 'move') continue;
         const handle = document.createElement('span');
         handle.className = name === 'rotate' ? 'ov-rotate' : 'ov-handle ov-' + name;
         handle.dataset.handle = name;
@@ -111,6 +117,13 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
       }
       item.dataset.handles = key;
     }
+  }
+  function drawOthers() {
+    const layerEl = layer('ov-multi');
+    const boxes = others.map(id => element(id)).filter(el => el && el.getClientRects().length);
+    while (layerEl.children.length > boxes.length) layerEl.lastChild.remove();
+    while (layerEl.children.length < boxes.length) { const item = document.createElement('div'); item.className = 'ov-box ov-also'; layerEl.append(item); }
+    boxes.forEach((el, i) => place(layerEl.children[i], layoutBox(el), rotationOf(el)));
   }
   function drawHover() {
     const el = hoverId !== selectedId && !gesture ? element(hoverId) : null;
@@ -151,6 +164,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     const item = layer('ov-gesture');
     if (!gesture) { item.innerHTML = ''; return; }
     let html = '';
+    if (gesture.marquee) html += '<i class="ov-marquee" style="' + rectStyle(gesture.marquee.left, gesture.marquee.top, gesture.marquee.right, gesture.marquee.bottom) + '"></i>';
     if (gesture.target) html += '<i class="ov-target" style="' + rectStyle(gesture.target.left, gesture.target.top, gesture.target.right, gesture.target.bottom) + '"></i>';
     if (gesture.insert) html += '<i class="ov-insert" style="' + rectStyle(gesture.insert.x1, gesture.insert.y1, gesture.insert.x2, gesture.insert.y2) + '"></i>';
     for (const line of gesture.lines || []) html += '<i class="ov-line ov-line-' + line.kind + '" style="' + rectStyle(line.x1, line.y1, line.x2, line.y2) + '"></i>';
@@ -162,7 +176,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
   }
   function draw() {
     if (!doc || !frameDoc()) return;
-    drawHover(); drawSelection(); drawGrid(); drawColumnHandles(); drawGuides(); drawGesture();
+    drawHover(); drawOthers(); drawSelection(); drawGrid(); drawColumnHandles(); drawGuides(); drawGesture();
   }
   boot();
   return {
@@ -174,8 +188,8 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
       if (!ids || pageChanged) renderAll(); else renderSome(ids);
       schedule();
     },
-    select(id, { reveal = false } = {}) {
-      selectedId = id;
+    select(id, { reveal = false, also = [] } = {}) {
+      selectedId = id; others = also.filter(item => item !== id);
       if (reveal) element(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       schedule();
     },

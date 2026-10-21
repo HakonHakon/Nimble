@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
-const requested = new URLSearchParams(location.search).get('next') || '/builder.html';
-const next = ['/builder.html', '/editor.html', '/control-panel.html'].includes(requested.split('#')[0]) ? requested : '/builder.html';
+const requested = new URLSearchParams(location.search).get('next') || '/editor.html';
+const next = ['/builder.html', '/editor.html', '/control-panel.html'].includes(requested.split('#')[0]) ? requested : '/editor.html';
 let setup = false;
 const message = text => { $('message').textContent = text; };
 const tokenField = document.createElement('div'); tokenField.className = 'field hidden';

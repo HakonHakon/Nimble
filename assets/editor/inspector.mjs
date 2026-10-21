@@ -199,7 +199,8 @@ export function createInspector(root, ctx) {
   }
 
   function render() {
-    const { doc, bp, selected, index } = ctx.state();
+    const { doc, bp, selected, index, selection } = ctx.state();
+    if (selection.length > 1) { root.innerHTML = multiHtml(doc, selection); return; }
     const node = selected && doc.nodes[selected];
     if (!node) { root.innerHTML = '<div class="empty-inspector"><p>Select an element on the page or in Layers to edit it.</p></div>'; return; }
     const bpInfo = bp === 'desktop' ? 'Desktop — base design' : (doc.breakpoints.find(item => item.id === bp)?.name || bp) + ' — overrides at ≤' + doc.breakpoints.find(item => item.id === bp)?.max + 'px';
@@ -216,6 +217,7 @@ export function createInspector(root, ctx) {
         + '<div class="field" data-setting="locked"><label class="check"><input type="checkbox" data-part="value"' + (node.locked ? ' checked' : '') + '>Locked (cannot be moved)</label></div>'
         + '<div class="field" data-setting="hidden"><div class="field-head"><label>Visible on</label></div>' + bpIds.map(id => '<label class="check"><input type="checkbox" data-bp="' + esc(id) + '"' + (hiddenAt(node, bpIds, id) ? '' : ' checked') + '>' + esc(id === 'desktop' ? 'Desktop' : doc.breakpoints.find(item => item.id === id).name) + '</label>').join('') + '</div>'
         + '<div class="field"><div class="field-head"><label>Anchor ID</label></div><code>#' + esc(node.id) + '</code></div>'
+        + '<div class="multi-actions">' + (ctx.canArrange('ungroup') ? '<button class="btn" data-arrange="ungroup">Ungroup</button>' : '') + '<button class="btn" data-arrange="duplicate">Duplicate</button></div>'
         + (index.get(selected)?.list === 'header' || index.get(selected)?.list === 'footer' ? '' : '<button class="btn btn-danger" data-delete>Delete element</button>');
     }
     root.innerHTML = '<div class="inspector-top"><div class="crumbs">' + chain + '</div><h2 class="inspector-title"><span aria-hidden="true">' + (TYPES[node.type]?.icon || '') + '</span> ' + esc(label(node)) + '</h2><p class="bp-note">' + esc(bpInfo) + '</p>'
@@ -281,7 +283,18 @@ export function createInspector(root, ctx) {
     }
   }
 
+  function multiHtml(doc, selection) {
+    const tool = (action, icon, title) => '<button class="tool" data-arrange="' + action + '" title="' + esc(title) + '" aria-label="' + esc(title) + '"' + (ctx.canArrange(action) ? '' : ' disabled') + '>' + icon + '</button>';
+    return '<div class="inspector-top"><h2 class="inspector-title">' + selection.length + ' elements selected</h2><p class="bp-note">' + esc(selection.map(id => label(doc.nodes[id])).join(', ')) + '</p></div><div class="tab-body multi">'
+      + '<h3>Align</h3><div class="toolrow">' + tool('alignLeft', '⇤', 'Align left') + tool('alignCenter', '↔', 'Align centre') + tool('alignRight', '⇥', 'Align right') + tool('alignTop', '⤒', 'Align top') + tool('alignMiddle', '⇕', 'Align middle') + tool('alignBottom', '⤓', 'Align bottom') + '</div>'
+      + '<h3>Distribute and size</h3><div class="toolrow">' + tool('distributeX', '⇹', 'Distribute horizontally') + tool('distributeY', '⇳', 'Distribute vertically') + tool('matchWidth', '↔=', 'Match width') + tool('matchHeight', '↕=', 'Match height') + tool('matchSize', '⧉', 'Match size') + '</div>'
+      + '<h3>Arrange</h3><div class="toolrow">' + tool('front', '⤒▢', 'Bring to front') + tool('forward', '↑▢', 'Bring forward') + tool('backward', '↓▢', 'Send backward') + tool('back', '⤓▢', 'Send to back') + '</div>'
+      + '<div class="multi-actions"><button class="btn" data-arrange="group"' + (ctx.canArrange('group') ? '' : ' disabled') + '>Group</button><button class="btn" data-arrange="duplicate">Duplicate</button><button class="btn" data-arrange="lock">Lock / unlock</button><button class="btn btn-danger" data-arrange="delete">Delete</button></div>'
+      + '<p class="hint">Align and distribute work on elements in the same freeform grid. Group needs elements in the same container, on Desktop.</p></div>';
+  }
   root.addEventListener('click', event => {
+    const arrange = event.target.closest('[data-arrange]');
+    if (arrange) { ctx.arrange(arrange.dataset.arrange); return; }
     if (event.target.closest('.lp') && layoutPanel.onClick(event, root)) return;
     const tabButton = event.target.closest('[data-tab]');
     if (tabButton) { tab = tabButton.dataset.tab; linkDraft = null; bgDraft = null; return render(); }

@@ -22,6 +22,8 @@
       <span class="save-state" id="saveState" role="status">Loading…</span>
       <button class="btn btn-icon" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button class="btn btn-icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button class="btn" id="templatesBtn">Templates</button>
+      <button class="btn btn-icon" id="helpBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       <button class="btn" id="previewBtn">Preview</button>
       <button class="btn btn-primary" id="publishBtn" disabled>Publish</button>
       <span class="avatar" id="userAvatar" aria-hidden="true"></span>
@@ -33,11 +35,15 @@
       <button class="rail-button" data-tool="add" aria-pressed="false"><span aria-hidden="true">＋</span>Add</button>
       <button class="rail-button" data-tool="layers" aria-pressed="true"><span aria-hidden="true">☰</span>Layers</button>
       <button class="rail-button" data-tool="pages" aria-pressed="false"><span aria-hidden="true">▤</span>Pages</button>
+      <button class="rail-button" data-tool="media" aria-pressed="false"><span aria-hidden="true">▧</span>Media</button>
+      <button class="rail-button" data-tool="site" aria-pressed="false"><span aria-hidden="true">⚙</span>Site</button>
     </nav>
     <aside class="left-panel">
       <div class="tool-panel" data-panel="add" id="addPanel" hidden></div>
       <div class="tool-panel" data-panel="layers" id="layersPanel"></div>
       <div class="tool-panel" data-panel="pages" id="pagesPanel" hidden></div>
+      <div class="tool-panel" data-panel="media" id="mediaPanel" hidden></div>
+      <div class="tool-panel" data-panel="site" id="sitePanel" hidden></div>
     </aside>
     <main class="canvas-area">
       <div class="canvas-scroll" id="canvasScroll">

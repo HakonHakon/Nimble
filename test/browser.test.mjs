@@ -18,7 +18,7 @@ test('real browser: editor lifecycle, pages, drag/drop, uploads, preview, contac
   await attach(context);
   async function signIn(context, credentials = ownerCredentials) {
     const page = await context.newPage();
-    await page.goto(f.base + '/login.html');
+    await page.goto(f.base + '/login.html?next=/builder.html');
     await page.locator('#email').fill(credentials.email); await page.locator('#password').fill(credentials.password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.waitForURL('**/builder.html');

@@ -56,6 +56,33 @@ The **Add** panel includes layout presets:
 - Grids: two columns and three columns. The three-column grid uses two columns on tablet and one on mobile.
 - Vertical and horizontal stacks, and a plain box.
 
+## Selecting several elements and arranging them
+
+- Shift-click (or Ctrl/⌘-click) on the canvas or in Layers adds or removes elements. Dragging across empty section space draws a selection rectangle. Ctrl/⌘+A selects all elements that share the parent of the current one.
+- A container and something inside it are never selected together: adding one replaces the other.
+- With several elements selected, the inspector shows Align, Distribute, Match size, Arrange (layer order), Group, Duplicate, Lock and Delete. The same actions are in the right-click menu and on keyboard shortcuts.
+  - **Align and distribute** work on elements in the same freeform grid. With one element selected, Align uses its container.
+  - **Dragging** one of several selected elements in the same grid moves them all, and arrow keys nudge every selected element.
+  - **Group** wraps elements of the same container in a new container and keeps their position. Below desktop, the group stacks its content so it stays readable on small screens. **Ungroup** puts the elements back where they were. Both work on Desktop only, because positions are measured there.
+  - **Layer order** (bring forward / send backward) changes stacking within a grid.
+- **Clipboard.** Copy, cut and paste work across pages and browser tabs, and pasted elements get new ids.
+  - Pasting into the same container shifts the copy by 20 px; pasting into a different container drops the old grid position.
+  - Sections paste after the current section.
+  - **Copy design / Paste design** copies only the Design values.
+- **Moving a section.** Drag its name tag above the selection box. Dragging inside a section draws a selection rectangle.
+
+## Site, media and templates
+
+- **Media:** upload images and videos. Click an image to put it into the selected image element, or to add a new image after the selection.
+- **Site:**
+  - site name, description, language, social image, and visibility in search engines
+  - theme colours: edit them, or add your own, which can be used as `@name`; every element that uses a colour updates
+  - heading and body fonts
+- **Templates** (top bar):
+  - built-in starting points and your saved templates; applying one replaces the draft, and Undo brings it back
+  - save the current site as a template
+  - export the draft as JSON, or import one; drafts from the classic builder are converted
+
 ## Keyboard
 
 | Keys | Action |
@@ -66,5 +93,12 @@ The **Add** panel includes layout presets:
 | Esc | Cancel the current drag, close a dialog, or select the parent |
 | Arrows, Shift+arrows | Nudge by 1 px / 10 px |
 | Layers: ↑ ↓ ← →, F2 / Enter, Alt+↑ / Alt+↓ | Navigate, rename, reorder |
+| Ctrl/⌘+C, X, V, D | Copy, cut, paste, duplicate |
+| Ctrl/⌘+Alt+C, Ctrl/⌘+Alt+V | Copy / paste design |
+| Ctrl/⌘+G, Ctrl/⌘+Shift+G | Group, ungroup |
+| Ctrl/⌘+] / [, with Shift | Bring forward / send backward, to front / to back |
+| Ctrl/⌘+Shift+L, Ctrl/⌘+Shift+H | Lock / unlock, hide / show on this breakpoint |
+| Ctrl/⌘+A | Select all siblings |
+| ? | Shortcut list |
 
 Each drag or edit is saved as a single undo step. Edits apply to the breakpoint shown in the top bar.

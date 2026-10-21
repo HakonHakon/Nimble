@@ -15,8 +15,8 @@ export function createLayers(root, ctx) {
   const tree = root.querySelector('.layers');
 
   function rows() {
-    const { doc, page, bp, bpIds, selected, index } = ctx.state();
-    if (selected) for (const id of ancestors(index, selected).slice(0, -1)) expanded.add(id);
+    const { doc, page, bp, bpIds, selected, selection, index } = ctx.state();
+    for (const chosen of selection) for (const id of ancestors(index, chosen).slice(0, -1)) expanded.add(id);
     const out = [];
     const walk = (id, depth, region) => {
       const node = doc.nodes[id];
@@ -26,7 +26,7 @@ export function createLayers(root, ctx) {
       const hidden = hiddenAt(node, bpIds, bp);
       const title = region === 'header' ? 'Header' : region === 'footer' ? 'Footer' : label(node);
       const dimmed = (region === 'header' && !page.showHeader) || (region === 'footer' && !page.showFooter);
-      out.push('<div class="layer-row' + (id === selected ? ' selected' : '') + (hidden ? ' is-hidden' : '') + (dimmed ? ' is-dimmed' : '') + '" role="treeitem" tabindex="' + (id === selected ? '0' : '-1') + '" aria-level="' + (depth + 1) + '" aria-selected="' + (id === selected) + '"' + (children.length ? ' aria-expanded="' + open + '"' : '') + ' data-id="' + esc(id) + '" draggable="' + (region === 'page' || depth > 0) + '" style="--depth:' + depth + '">'
+      out.push('<div class="layer-row' + (selection.includes(id) ? ' selected' : '') + (id === selected ? ' primary' : '') + (hidden ? ' is-hidden' : '') + (dimmed ? ' is-dimmed' : '') + '" role="treeitem" tabindex="' + (id === selected ? '0' : '-1') + '" aria-level="' + (depth + 1) + '" aria-selected="' + selection.includes(id) + '"' + (children.length ? ' aria-expanded="' + open + '"' : '') + ' data-id="' + esc(id) + '" draggable="' + (region === 'page' || depth > 0) + '" style="--depth:' + depth + '">'
         + '<button class="layer-toggle" data-toggle tabindex="-1" aria-hidden="true"' + (children.length ? '' : ' disabled') + '>' + (children.length ? (open ? '▾' : '▸') : '') + '</button>'
         + '<span class="layer-icon" aria-hidden="true">' + (TYPES[node.type]?.icon || '•') + '</span>'
         + (renaming === id ? '<input class="layer-rename" value="' + esc(node.name || '') + '" placeholder="' + esc(label(node)) + '" aria-label="Element name">' : '<span class="layer-name">' + esc(title) + '</span>')
@@ -60,7 +60,13 @@ export function createLayers(root, ctx) {
       return ctx.commit([{ path: ['nodes', id, 'hidden', bp], value: bp === 'desktop' && !next ? undefined : next }], { label: next ? 'Hide' : 'Show' });
     }
     if (event.target.closest('[data-lock]')) return ctx.commit([{ path: ['nodes', id, 'locked'], value: node.locked ? undefined : true }], { label: node.locked ? 'Unlock' : 'Lock' });
-    ctx.select(id, { source: 'layers' });
+    ctx.select(id, { source: 'layers', toggle: event.shiftKey || event.ctrlKey || event.metaKey });
+  });
+  tree.addEventListener('contextmenu', event => {
+    const row = rowOf(event); if (!row) return;
+    event.preventDefault();
+    if (!ctx.state().selection.includes(row.dataset.id)) ctx.select(row.dataset.id, { source: 'layers' });
+    ctx.contextMenu(event.clientX, event.clientY);
   });
   tree.addEventListener('dblclick', event => { const row = rowOf(event); if (!row || !ctx.editable()) return; renaming = row.dataset.id; render(); });
   tree.addEventListener('keydown', event => {
@@ -130,17 +136,17 @@ export function createLayers(root, ctx) {
 
   // Selection changes only touch classes, so rows survive between the two clicks of a double-click.
   function updateSelection() {
-    const { selected, index } = ctx.state();
-    const hiddenAncestor = selected && ancestors(index, selected).slice(0, -1).some(id => !expanded.has(id));
-    if (hiddenAncestor || (selected && !tree.querySelector('.layer-row[data-id="' + CSS.escape(selected) + '"]'))) return render();
+    const { selected, selection, index } = ctx.state();
+    const hiddenAncestor = selection.some(chosen => ancestors(index, chosen).slice(0, -1).some(id => !expanded.has(id)));
+    if (hiddenAncestor || selection.some(chosen => !tree.querySelector('.layer-row[data-id="' + CSS.escape(chosen) + '"]'))) return render();
     for (const row of tree.querySelectorAll('.layer-row')) {
-      const on = row.dataset.id === selected;
-      row.classList.toggle('selected', on); row.setAttribute('aria-selected', String(on)); row.tabIndex = on ? 0 : -1;
+      const on = selection.includes(row.dataset.id);
+      row.classList.toggle('selected', on); row.classList.toggle('primary', row.dataset.id === selected); row.setAttribute('aria-selected', String(on)); row.tabIndex = row.dataset.id === selected ? 0 : -1;
     }
   }
   return {
     render, updateSelection,
-    focusSelected() { tree.querySelector('.layer-row.selected')?.focus(); },
-    reveal() { tree.querySelector('.layer-row.selected')?.scrollIntoView({ block: 'nearest' }); }
+    focusSelected() { (tree.querySelector('.layer-row.primary') || tree.querySelector('.layer-row.selected'))?.focus(); },
+    reveal() { (tree.querySelector('.layer-row.primary') || tree.querySelector('.layer-row.selected'))?.scrollIntoView({ block: 'nearest' }); }
   };
 }

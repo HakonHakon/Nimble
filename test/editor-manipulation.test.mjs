@@ -136,11 +136,11 @@ test('v2 editor: move, snap, reorder, reparent, resize, rotate, nudge and guides
     await canvas.locator('#inquiry > #intro__button').waitFor();
   });
 
-  await t.test('sections reorder by dragging them', async () => {
+  await t.test('sections reorder by dragging their name tag', async () => {
     await page.locator('#canvasFrame').evaluate(frame => frame.contentWindow.scrollTo(0, 0));
     await page.locator('.layer-row[data-id="clip"]').click();
-    const clip = await at('clip', 0.5, 0.05), intro = await at('intro', 0.5, 0.1);
-    await drag(clip, intro);
+    const tag = await page.locator('.ov-select .ov-tag-drag').boundingBox(), intro = await at('intro', 0.5, 0.1);
+    await drag({ x: tag.x + 8, y: tag.y + tag.height / 2 }, intro);
     assert.deepEqual((await doc()).pages[0].children.slice(0, 2), ['clip', 'intro']);
   });
 

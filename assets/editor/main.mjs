@@ -9,11 +9,14 @@ import { createInspector } from './inspector.mjs';
 import { createAddPanel, createPagesPanel } from './panels.mjs';
 import { createTransformer } from './transform.mjs';
 import { createRulers } from './rulers.mjs';
+import { createArranger } from './arrange.mjs';
+import { createMenu, shortcutSheet } from './menu.mjs';
+import { createMediaPanel, createSitePanel, createTemplates } from './site-panels.mjs';
 import { indexTree, ancestors, descendants, listOf, label } from './tree.mjs';
 
 const $ = selector => document.querySelector(selector);
-const app = { store: null, user: null, role: 'viewer', csrf: '', revision: 0, loaded: false, locked: false, dirty: false, pageId: 'home', bp: 'desktop', selected: null, tool: 'layers', converted: false };
-let saveTimer = null, saving = null, cachedIndex = null, cachedFor = null, transformer = null, rulers = null;
+const app = { store: null, user: null, role: 'viewer', csrf: '', revision: 0, loaded: false, locked: false, dirty: false, pageId: 'home', bp: 'desktop', selected: null, selection: [], tool: 'layers', converted: false };
+let saveTimer = null, saving = null, cachedIndex = null, cachedFor = null, transformer = null, rulers = null, arranger = null, menu = null;
 const prefs = (() => { try { return { snap: true, rulers: true, grid: false, ...JSON.parse(localStorage.getItem('nimble-editor-prefs') || '{}') }; } catch { return { snap: true, rulers: true, grid: false }; } })();
 const savePrefs = () => { try { localStorage.setItem('nimble-editor-prefs', JSON.stringify(prefs)); } catch {} };
 
@@ -78,14 +81,29 @@ function commit(ops, options) {
   try { return app.store.commit(ops, options); }
   catch (error) { toast(error.message); renderPanels(); return false; }
 }
-function select(id, { source = 'api', reveal = source !== 'canvas' } = {}) {
-  app.selected = id && doc().nodes[id] ? id : null;
-  canvas.select(app.selected, { reveal });
+// The selection is a list of element ids; `selected` is the primary one (last clicked) that the
+// inspector and handles act on. Parents and children are never selected together.
+function applySelection(ids, primary, { source = 'api', reveal = source !== 'canvas' } = {}) {
+  const valid = ids.filter((id, i) => doc().nodes[id] && ids.indexOf(id) === i);
+  const chosen = valid.filter(id => !valid.some(other => other !== id && ancestors(index(), id).includes(other)));
+  app.selection = chosen;
+  app.selected = chosen.includes(primary) ? primary : chosen[chosen.length - 1] || null;
+  canvas.select(app.selected, { reveal, also: app.selection });
   if (app.tool === 'layers') layers.updateSelection(); else renderPanels();
   inspector.render();
   if (source !== 'layers') layers.reveal();
   else layers.focusSelected();
 }
+function select(id, { source = 'api', reveal, toggle = false } = {}) {
+  if (toggle && id) {
+    if (app.selection.includes(id)) return applySelection(app.selection.filter(item => item !== id), null, { source, reveal });
+    // Adding an element replaces its selected ancestors or descendants.
+    const keep = app.selection.filter(item => !ancestors(index(), id).includes(item) && !ancestors(index(), item).includes(id));
+    return applySelection([...keep, id], id, { source, reveal });
+  }
+  applySelection(id ? [id] : [], id, { source, reveal });
+}
+function selectMany(ids, primary = ids[ids.length - 1]) { applySelection(ids, primary, { source: 'api', reveal: false }); }
 function remove(id) {
   if (!id || !editable()) return;
   const where = index().get(id), list = listOf(doc(), index(), id);
@@ -112,13 +130,19 @@ async function upload(kind) {
 }
 
 const ctx = {
-  state: () => ({ doc: doc(), page: page(), pageIndex: doc().pages.indexOf(page()), bp: app.bp, bpIds: bpIds(), selected: app.selected, index: index() }),
-  commit, select, remove, upload, editable,
+  state: () => ({ doc: doc(), page: page(), pageIndex: doc().pages.indexOf(page()), bp: app.bp, bpIds: bpIds(), selected: app.selected, selection: app.selection, index: index() }),
+  commit, select, selectMany, remove, upload, editable, toast,
+  arrange: action => arranger.run(action),
+  canArrange: action => arranger.available(action),
+  api: (url, options) => api(url, options),
+  dialog: (title, html) => showDialog(title, html),
+  closeDialog: () => closeDialog(),
+  contextMenu: (x, y) => menu.open(x, y),
   refresh: () => inspector.render(),
   showLayout: () => inspector.setTab('layout'),
   snapping: () => prefs.snap,
   guides: () => rulers ? rulers.guides : { x: [], y: [] },
-  openPage(id) { app.pageId = id; app.selected = null; canvas.select(null); canvas.render(doc(), page()); renderPanels(); renderChrome(); rulers.load(); }
+  openPage(id) { app.pageId = id; app.selected = null; app.selection = []; canvas.select(null); canvas.render(doc(), page()); renderPanels(); renderChrome(); rulers.load(); }
 };
 
 const canvas = createCanvas({
@@ -130,14 +154,24 @@ const canvas = createCanvas({
   getColumnHandles: id => transformer ? transformer.columnHandles(id) : false,
   onScroll: () => rulers?.draw(),
   onHover: id => { document.querySelectorAll('.layer-row.hovered').forEach(row => row.classList.remove('hovered')); if (id) document.querySelector('.layer-row[data-id="' + CSS.escape(id) + '"]')?.classList.add('hovered'); },
-  onKey: event => keyboard(event)
+  onKey: event => keyboard(event),
+  onContextMenu: (event, id) => {
+    if (id && !app.selection.includes(id)) select(id, { source: 'canvas' });
+    const r = $('#canvasFrame').getBoundingClientRect();
+    menu.open(r.left + event.clientX * canvas.scale, r.top + event.clientY * canvas.scale);
+  }
 });
 transformer = createTransformer(canvas, ctx);
+arranger = createArranger(canvas, transformer, ctx);
+menu = createMenu(arranger);
 rulers = createRulers({ area: $('.canvas-area'), canvas, key: () => 'nimble-guides-' + (app.store ? page().id : 'home') + '-' + app.bp });
 const layers = createLayers($('#layersPanel'), ctx);
 const inspector = createInspector($('#inspector'), ctx);
 const addPanel = createAddPanel($('#addPanel'), ctx);
 const pagesPanel = createPagesPanel($('#pagesPanel'), ctx);
+const mediaPanel = createMediaPanel($('#mediaPanel'), ctx);
+const sitePanel = createSitePanel($('#sitePanel'), ctx);
+const templates = createTemplates(ctx);
 
 function deviceWidth(bp) {
   const available = $('#canvasScroll').clientWidth - 48;
@@ -171,6 +205,8 @@ function updateViewport() {
 function renderPanels() {
   if (app.tool === 'layers') layers.render();
   if (app.tool === 'pages') pagesPanel.render();
+  if (app.tool === 'media') mediaPanel.render();
+  if (app.tool === 'site') sitePanel.render();
   inspector.render();
 }
 
@@ -181,7 +217,15 @@ function keyboard(event) {
   if (typing) return;
   if (mod && event.key.toLowerCase() === 'z') { event.preventDefault(); if (editable()) event.shiftKey ? app.store.redo() : app.store.undo(); return; }
   if (mod && event.key.toLowerCase() === 'y') { event.preventDefault(); if (editable()) app.store.redo(); return; }
-  if ((event.key === 'Delete' || event.key === 'Backspace') && app.selected && !event.target.closest('.layers')?.querySelector('.layer-rename')) { event.preventDefault(); remove(app.selected); return; }
+  if ((event.key === 'Delete' || event.key === 'Backspace') && app.selected) { event.preventDefault(); arranger.run('delete'); return; }
+  if (mod) {
+    const k = event.key.toLowerCase();
+    const map = event.altKey ? { c: 'copyStyle', v: 'pasteStyle' } : event.shiftKey ? { g: 'ungroup', l: 'lock', h: 'hide', ']': 'front', '}': 'front', '[': 'back', '{': 'back' } : { c: 'copy', x: 'cut', v: 'paste', d: 'duplicate', g: 'group', a: 'selectAll', ']': 'forward', '[': 'backward' };
+    const code = event.code === 'BracketRight' ? ']' : event.code === 'BracketLeft' ? '[' : event.code === 'KeyC' ? 'c' : event.code === 'KeyV' ? 'v' : k;
+    const action = map[code];
+    if (action) { event.preventDefault(); arranger.run(action); return; }
+  }
+  if (event.key === '?' && !mod) { event.preventDefault(); showDialog('Keyboard shortcuts', shortcutSheet()); return; }
   const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
   if (arrows[event.key] && app.selected && !event.target.closest?.('.layers')) {
     event.preventDefault();
@@ -190,7 +234,7 @@ function keyboard(event) {
     return;
   }
   if (event.key === 'Escape' && transformer.cancel()) return;
-  if (event.key === 'Escape') { if ($('#modalRoot').firstChild) return closeDialog(); const parent = index().get(app.selected)?.parent; select(parent || null); }
+  if (event.key === 'Escape') { if (menu.isOpen) return menu.close(); if ($('#modalRoot').firstChild) return closeDialog(); if (app.selection.length > 1) return select(app.selected); const parent = index().get(app.selected)?.parent; select(parent || null); }
 }
 document.addEventListener('keydown', keyboard);
 
@@ -237,6 +281,8 @@ document.addEventListener('click', event => {
   if (event.target.closest('#undoBtn')) return app.store.undo();
   if (event.target.closest('#redoBtn')) return app.store.redo();
   if (event.target.closest('#previewBtn')) return preview();
+  if (event.target.closest('#templatesBtn')) return templates.open();
+  if (event.target.closest('#helpBtn')) return showDialog('Keyboard shortcuts', shortcutSheet());
   if (event.target.closest('#publishBtn')) return publish();
   if (event.target.closest('[data-reload]')) { try { localStorage.removeItem(draftKey()); } catch {} return location.reload(); }
 });
@@ -247,10 +293,11 @@ new ResizeObserver(() => { if (app.loaded) updateViewport(); }).observe($('#canv
 addEventListener('beforeunload', event => { if (app.dirty) { localDraft(); event.preventDefault(); } });
 
 function onChange({ ids, reason }) {
-  if (app.selected && !doc().nodes[app.selected]) app.selected = null;
+  app.selection = app.selection.filter(id => doc().nodes[id]);
+  if (app.selected && !doc().nodes[app.selected]) app.selected = app.selection[app.selection.length - 1] || null;
   if (!doc().pages.some(item => item.id === app.pageId)) app.pageId = 'home';
   canvas.render(doc(), page(), ids);
-  canvas.select(app.selected);
+  canvas.select(app.selected, { also: app.selection });
   renderPanels(); renderChrome();
   if (reason !== 'replace') markDirty();
 }
@@ -286,4 +333,4 @@ async function bootstrap() {
   }
 }
 bootstrap();
-window.nimbleEditor = { get doc() { return app.store?.doc; }, get selected() { return app.selected; }, get bp() { return app.bp; } };
+window.nimbleEditor = { get doc() { return app.store?.doc; }, get selected() { return app.selected; }, get selection() { return app.selection.slice(); }, get bp() { return app.bp; } };

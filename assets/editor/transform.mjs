@@ -35,7 +35,7 @@ export function createTransformer(canvas, ctx) {
   }
   function handles(id) {
     if (!id || !ctx.editable() || !node(id) || node(id).locked) return [];
-    return isRoot(node(id).type) ? ['s'] : ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rotate'];
+    return isRoot(node(id).type) ? (movable(id) ? ['s', 'move'] : ['s']) : ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rotate'];
   }
   function childBoxes(parentId, exclude) {
     return (node(parentId)?.children || []).filter(id => id !== exclude).map(id => canvas.element(id)).filter(el => el && el.getClientRects().length).map(layoutBox);
@@ -89,20 +89,31 @@ export function createTransformer(canvas, ctx) {
   function pointerDown(event, id) {
     // No native text selection or drag-and-drop inside the canvas: every drag is an editor gesture.
     event.preventDefault();
-    if (!id) { ctx.select(null, { source: 'canvas' }); return; }
-    if (id !== state().selected) ctx.select(id, { source: 'canvas' });
-    if (!movable(id)) return;
+    const { selection } = state();
+    if (id && (event.shiftKey || event.ctrlKey || event.metaKey)) { ctx.select(id, { source: 'canvas', toggle: true }); return; }
+    const root = !id || (isRoot(node(id).type) && state().index.get(id)?.list === 'page');
+    const keepGroup = id && selection.length > 1 && selection.includes(id);
+    if (!keepGroup && id !== state().selected) ctx.select(id, { source: 'canvas' });
+    // Dragging on the empty area of a section (or outside sections) draws a selection rectangle.
+    if (!root && !movable(id)) return;
     const start = { x: event.clientX, y: event.clientY }, target = event.target, host = target.ownerDocument;
     target.setPointerCapture?.(event.pointerId);
     let started = false;
     const onMove = move => {
       if (!started) {
         if (Math.hypot(move.clientX - start.x, move.clientY - start.y) < 3) return;
-        started = true; beginMove(id, start);
+        started = true;
+        if (root) beginMarquee(start); else beginMove(id, start);
       }
       if (active?.kind === 'move') updateMove({ x: move.clientX, y: move.clientY }, move);
+      if (active?.kind === 'marquee') updateMarquee({ x: move.clientX, y: move.clientY });
     };
-    const onUp = () => { cleanup(); if (active?.kind === 'move') finishMove(); };
+    const onUp = () => {
+      cleanup();
+      if (active?.kind === 'move') finishMove();
+      else if (active?.kind === 'marquee') finishMarquee();
+      else if (keepGroup) ctx.select(id, { source: 'canvas' });
+    };
     const cleanup = () => { host.removeEventListener('pointermove', onMove); host.removeEventListener('pointerup', onUp); host.removeEventListener('pointercancel', onCancel); };
     const onCancel = () => { cleanup(); cancel(); };
     host.addEventListener('pointermove', onMove);
@@ -113,7 +124,36 @@ export function createTransformer(canvas, ctx) {
     const el = canvas.element(id), where = state().index.get(id);
     const view = canvas.viewport();
     active = { kind: 'move', id, el, start, startBox: layoutBox(el), parent: where.parent, root: where.parent === null, targets: new Map(), scroll: { x: view.scrollX, y: view.scrollY } };
+    // Other selected siblings in the same freeform grid move along.
+    const others = state().selection.filter(other => other !== id && state().index.get(other)?.parent === where.parent && movable(other));
+    if (where.parent && others.length && modeOf(where.parent) === 'grid') active.group = others.map(other => ({ id: other, el: canvas.element(other), startBox: layoutBox(canvas.element(other)) }));
     canvas.setGesture({});
+  }
+  function beginMarquee(start) {
+    active = { kind: 'marquee', start };
+    canvas.setGesture({});
+  }
+  function updateMarquee(pointer) {
+    const a = active;
+    a.rect = box(Math.min(a.start.x, pointer.x), Math.min(a.start.y, pointer.y), Math.abs(pointer.x - a.start.x), Math.abs(pointer.y - a.start.y));
+    canvas.setGesture({ marquee: a.rect });
+  }
+  // Selects the outermost elements that lie completely inside the rectangle.
+  function finishMarquee() {
+    const a = active; active = null;
+    canvas.setGesture(null);
+    if (!a.rect) return;
+    const { doc, page } = state();
+    const inside = [];
+    const walk = id => {
+      const current = doc.nodes[id], el = canvas.element(id);
+      if (!current || !el || !el.getClientRects().length) return;
+      const b = el.getBoundingClientRect();
+      if (!isRoot(current.type) && b.left >= a.rect.left && b.right <= a.rect.right && b.top >= a.rect.top && b.bottom <= a.rect.bottom) { inside.push(id); return; }
+      for (const child of current.children || []) walk(child);
+    };
+    for (const id of page.children) walk(id);
+    ctx.selectMany(inside);
   }
   function updateMove(pointer, event) {
     const a = active, { startBox } = a;
@@ -153,6 +193,9 @@ export function createTransformer(canvas, ctx) {
       }
     }
     a.el.style.translate = (moved.left - startBox.left + scrolled.x) + 'px ' + (moved.top - startBox.top + scrolled.y) + 'px';
+    a.delta = { x: moved.left - startBox.left, y: moved.top - startBox.top };
+    const together = a.group && a.drop.kind === 'grid' && a.drop.parent === a.parent;
+    for (const item of a.group || []) item.el.style.translate = together ? (a.delta.x + scrolled.x) + 'px ' + (a.delta.y + scrolled.y) + 'px' : '';
     gesture.info = { x: moved.left, y: moved.bottom + 6, text: a.drop.kind === 'grid' ? Math.round(moved.left) + ', ' + Math.round(moved.top) : 'Move ' + label(node(a.id)) };
     canvas.setGesture(gesture);
   }
@@ -166,6 +209,7 @@ export function createTransformer(canvas, ctx) {
   function finishMove() {
     const a = active; active = null;
     a.el.style.translate = '';
+    for (const item of a.group || []) item.el.style.translate = '';
     canvas.setGesture(null);
     if (!a.drop) return;
     const { doc, index, pageIndex, bp } = state();
@@ -188,6 +232,7 @@ export function createTransformer(canvas, ctx) {
       ops = [...moveOps(doc, index, a.id, target), { path: ['nodes', a.id, 'place'], value: Object.keys(cleaned).length ? cleaned : undefined }];
     } else if (a.drop.kind === 'grid') {
       ops = placeOps(a.id, gridPlacement(a.parent, a.id, a.drop.moved, a.drop.pointer, true).values);
+      for (const item of a.group || []) ops.push(...placeOps(item.id, placeValues(item.id, box(item.startBox.left + a.delta.x, item.startBox.top + a.delta.y, item.startBox.width, item.startBox.height))));
     } else {
       const order = a.drop.order.slice(); order.splice(a.drop.position, 0, a.id);
       if (bp === 'desktop') {
@@ -242,8 +287,19 @@ export function createTransformer(canvas, ctx) {
     };
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
   }
+  // Sections are moved by dragging their name tag in the overlay.
+  function sectionDown(event) {
+    const id = state().selected;
+    if (!id || !movable(id)) return;
+    const release = shield('grabbing');
+    beginMove(id, canvas.toFrame(event.clientX, event.clientY));
+    const move = moveEvent => { if (active?.kind === 'move') updateMove(canvas.toFrame(moveEvent.clientX, moveEvent.clientY), moveEvent); };
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); release(); if (active?.kind === 'move') finishMove(); };
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+  }
   function handleDown(event, handle) {
     if (handle.startsWith('col:')) return columnDown(event, Number(handle.slice(4)));
+    if (handle === 'move') return sectionDown(event);
     const id = state().selected;
     if (!id || !ctx.editable() || node(id).locked) return;
     const el = canvas.element(id);
@@ -340,30 +396,38 @@ export function createTransformer(canvas, ctx) {
   }
 
   // ---- Keyboard ----
-  function nudge(dx, dy) {
-    const id = state().selected;
-    if (!id || !movable(id) || state().index.get(id).parent === null) return;
+  // Placement values that put a grid child's layout box at `b`, keeping its current cell.
+  function placeValues(id, b) {
+    const where = state().index.get(id), geo = gridGeometry(canvas.element(where.parent));
+    const current = placeAt(id).cell;
+    const cell = current ? { row: current[0], col: current[1] } : cellAt(geo, b.cx, b.cy);
+    const origin = cellOrigin(geo, cell.row, cell.col);
+    const values = { cell: [cell.row, cell.col, current?.[2] || 1, current?.[3] || 1], justifySelf: 'start', alignSelf: 'start', margin: [pxValue(b.top - origin.top), '0px', '0px', pxValue(b.left - origin.left)] };
+    if (!placeAt(id).width || placeAt(id).width === 'auto') values.width = pxValue(b.width);
+    return values;
+  }
+  function nudgeOps(id, dx, dy) {
     const where = state().index.get(id), el = canvas.element(id);
     if (modeOf(where.parent) === 'grid') {
-      const b = layoutBox(el), moved = box(b.left + dx, b.top + dy, b.width, b.height);
-      const current = placeAt(id).cell;
-      const geo = gridGeometry(canvas.element(where.parent));
-      const cell = current ? { row: current[0], col: current[1] } : cellAt(geo, b.cx, b.cy);
-      const origin = cellOrigin(geo, cell.row, cell.col);
-      const values = { cell: [cell.row, cell.col, current?.[2] || 1, current?.[3] || 1], justifySelf: 'start', alignSelf: 'start', margin: [pxValue(moved.top - origin.top), '0px', '0px', pxValue(moved.left - origin.left)] };
-      if (!placeAt(id).width || placeAt(id).width === 'auto') values.width = pxValue(b.width);
-      return ctx.commit(placeOps(id, values), { label: 'Nudge', merge: 'nudge:' + id });
+      const b = layoutBox(el);
+      return placeOps(id, placeValues(id, box(b.left + dx, b.top + dy, b.width, b.height)));
     }
     const cs = el.ownerDocument.defaultView.getComputedStyle(el);
     const margin = [parseFloat(cs.marginTop) + dy, parseFloat(cs.marginRight), parseFloat(cs.marginBottom), parseFloat(cs.marginLeft) + dx].map(pxValue);
-    ctx.commit(placeOps(id, { margin }), { label: 'Nudge', merge: 'nudge:' + id });
+    return placeOps(id, { margin });
+  }
+  function nudge(dx, dy) {
+    const ids = state().selection.filter(id => movable(id) && state().index.get(id).parent !== null);
+    if (!ids.length) return;
+    ctx.commit(ids.flatMap(id => nudgeOps(id, dx, dy)), { label: 'Nudge', merge: 'nudge:' + ids.join(',') });
   }
   function cancel() {
     if (!active) return false;
-    Object.assign(active.el.style, { translate: '', width: '', height: '', minHeight: '', margin: '', justifySelf: '', alignSelf: '', transform: '' });
+    if (active.el) Object.assign(active.el.style, { translate: '', width: '', height: '', minHeight: '', margin: '', justifySelf: '', alignSelf: '', transform: '' });
+    for (const item of active.group || []) item.el.style.translate = '';
     active = null;
     canvas.setGesture(null);
     return true;
   }
-  return { pointerDown, handleDown, handles, columnHandles, nudge, cancel, get busy() { return !!active; } };
+  return { pointerDown, handleDown, handles, columnHandles, nudge, cancel, placeValues, modeOf, movable, get busy() { return !!active; } };
 }
