@@ -86,6 +86,20 @@ The **Add** panel includes layout presets:
   - **Copy design / Paste design** copies only the Design values.
 - **Moving a section.** Drag its name tag above the selection box. Dragging inside a section draws a selection rectangle.
 
+## Adding elements
+
+- **Add panel.** Elements are grouped into Sections, Layout, Text, Buttons, Media, Shapes and icons, Navigation and Forms. Type in the search box to filter by name or purpose ("cta", "circle", "list").
+- **Click** an element to add it into the selected container or after the selected element.
+- **Drag** an element onto the page:
+  - between sections, for sections
+  - at the insertion line, in a stack
+  - at the drop point inside a grid cell (docked to the top left, with margins)
+
+  The drop target is outlined while you drag. Press Esc to cancel.
+- **Icons:** 47 built-in stroke icons. Each icon element has a picker, an accessible label, an optional link and a stroke width; its colour comes from the text colour. Buttons can show an icon before or after the label, or only the icon (the label stays for screen readers).
+- **Lines** can be horizontal or vertical, with their own thickness and line style.
+- **SVG images** can be uploaded in the Media panel like other images. They are shown through `<img>` and served with a sandboxing Content-Security-Policy, so scripts inside an SVG never run.
+
 ## Text editing
 
 - **Start editing.** Double-click a text on the canvas, press Enter while it is selected, or click *Edit on canvas* in the Content tab. While you type, the resize handles are hidden. Changes save while you type; a burst of typing is one undo step.

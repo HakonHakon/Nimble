@@ -276,3 +276,14 @@ code{background:var(--soft);padding:2px 6px;border-radius:5px}
 .rt-color{display:inline-flex;align-items:center;gap:2px;font-weight:700;color:var(--muted)}
 .rt-color .color-field{width:auto}.rt-color .color-field input{display:none}.rt-color .swatch-btn{width:26px;height:26px}
 .rt-link{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:6px}.rt-link label{display:grid;gap:3px;font-size:12px;font-weight:600}.rt-link label.check{display:flex;font-weight:500}
+/* Phase 8a: element library */
+.add-search{width:100%;margin:0 0 6px;padding:7px 9px;border:1px solid var(--line);border-radius:8px}
+.add-item{touch-action:none}
+.add-ghost{position:fixed;z-index:220;pointer-events:none;padding:6px 10px;border-radius:7px;background:var(--ink);color:#fff;font-weight:600;font-size:12px;opacity:.85;box-shadow:0 8px 20px rgba(0,0,0,.2)}
+.add-ghost.ok{background:var(--accent)}
+.icon-picker summary{display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:#fff;list-style:none}
+.icon-picker summary svg,.icon-grid svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:4px;margin-top:6px;max-height:220px;overflow:auto}
+.icon-grid button{height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;display:grid;place-items:center;padding:0}
+.icon-grid button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-dark)}
+.icon-grid .none{font-size:11px;color:var(--muted)}

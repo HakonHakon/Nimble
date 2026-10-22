@@ -429,5 +429,76 @@ export function createTransformer(canvas, ctx) {
     canvas.setGesture(null);
     return true;
   }
-  return { pointerDown, handleDown, handles, columnHandles, nudge, cancel, placeValues, modeOf, movable, get busy() { return !!active; } };
+  // ---- Insert from the Add panel ----
+  // Where a new element of `type` lands for a pointer in iframe coordinates: a slot between sections,
+  // an insertion line in a stack, or a docked position inside a grid cell.
+  function insertTarget(type, pointer) {
+    const { doc, index, page } = state();
+    if (isRoot(type)) {
+      const slot = rootSlot(null, pointer.y, page);
+      return { kind: 'root', position: slot.position < slot.order.length ? page.children.indexOf(slot.order[slot.position]) : page.children.length, gesture: { insert: slot.line } };
+    }
+    let parentId = null;
+    for (const hit of canvas.document().elementsFromPoint(pointer.x, pointer.y)) {
+      let el = hit.closest('.n');
+      while (el && !isContainer(doc.nodes[el.id]?.type)) el = el.parentElement?.closest('.n');
+      if (el && index.has(el.id)) { parentId = el.id; break; }
+    }
+    if (!parentId) return null;
+    const target = canvas.element(parentId).getBoundingClientRect();
+    if (modeOf(parentId) === 'grid') {
+      const geo = gridGeometry(canvas.element(parentId));
+      const cell = cellAt(geo, pointer.x, pointer.y), origin = cellOrigin(geo, cell.row, cell.col);
+      const values = { cell: [cell.row, cell.col, 1, 1], justifySelf: 'start', alignSelf: 'start', margin: [pxValue(Math.max(0, pointer.y - origin.top)), '0px', '0px', pxValue(Math.max(0, pointer.x - origin.left))] };
+      return { kind: 'grid', parent: parentId, position: node(parentId).children.length, values, gesture: { target, info: { x: pointer.x + 12, y: pointer.y + 12, text: 'Add to ' + label(node(parentId)) } } };
+    }
+    const slot = stackSlot(parentId, null, pointer.x, pointer.y);
+    const children = node(parentId).children;
+    return { kind: 'stack', parent: parentId, position: slot.position < slot.order.length ? children.indexOf(slot.order[slot.position]) : children.length, gesture: { target, insert: slot.line } };
+  }
+  // Drag from a panel item onto the canvas. `onDrop(target)` runs on release over a valid target;
+  // a press without movement is left to the item's click handler.
+  function insertDrag(event, type, text, onDrop) {
+    if (!ctx.editable() || event.button !== 0) return;
+    const start = { x: event.clientX, y: event.clientY };
+    let started = false, drop = null, release = null, ghost = null;
+    const onMove = move => {
+      if (!started) {
+        if (Math.hypot(move.clientX - start.x, move.clientY - start.y) < 5) return;
+        started = true;
+        release = shield('copy');
+        ghost = document.createElement('div');
+        ghost.className = 'add-ghost';
+        ghost.textContent = text;
+        document.body.append(ghost);
+      }
+      Object.assign(ghost.style, { left: move.clientX + 14 + 'px', top: move.clientY + 10 + 'px' });
+      const r = canvas.frame.getBoundingClientRect();
+      const inside = move.clientX >= r.left && move.clientX <= r.right && move.clientY >= r.top && move.clientY <= r.bottom;
+      if (inside) {
+        // Scroll the page while dragging near the top or bottom of the canvas.
+        if (move.clientY < r.top + 40) canvas.document().defaultView.scrollBy(0, -20);
+        else if (move.clientY > Math.min(r.bottom, innerHeight) - 40) canvas.document().defaultView.scrollBy(0, 20);
+      }
+      drop = inside ? insertTarget(type, canvas.toFrame(move.clientX, move.clientY)) : null;
+      ghost.classList.toggle('ok', !!drop);
+      canvas.setGesture(drop ? drop.gesture : {});
+    };
+    const finish = commitDrop => {
+      removeEventListener('pointermove', onMove);
+      removeEventListener('pointerup', onUp);
+      removeEventListener('keydown', onKey, true);
+      canvas.document()?.removeEventListener('keydown', onKey, true);
+      if (!started) return;
+      ghost.remove(); release(); canvas.setGesture(null);
+      if (commitDrop && drop) onDrop(drop);
+    };
+    const onUp = () => finish(true);
+    const onKey = key => { if (key.key === 'Escape') { key.preventDefault(); key.stopPropagation(); finish(false); } };
+    addEventListener('pointermove', onMove);
+    addEventListener('pointerup', onUp);
+    addEventListener('keydown', onKey, true);
+    canvas.document()?.addEventListener('keydown', onKey, true); // focus may be inside the canvas
+  }
+  return { pointerDown, handleDown, handles, columnHandles, nudge, cancel, placeValues, modeOf, movable, insertDrag, get busy() { return !!active; } };
 }

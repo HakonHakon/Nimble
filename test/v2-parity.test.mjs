@@ -90,7 +90,9 @@ test('PHP and Node reject the same invalid v2 documents', { skip }, async () => 
     mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', c: [{ text: 'x', weight: 950 }] }]; }),
     mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', c: [{ text: 'x', highlight: 'red' }] }]; }),
     mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', lineHeight: 9, c: [] }]; }),
-    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'ul', letterSpacing: 'wide', items: [] }]; })
+    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'ul', letterSpacing: 'wide', items: [] }]; }),
+    mutate(doc => { doc.nodes.cta.props.icon = 'not-an-icon'; }),
+    mutate(doc => { doc.nodes.cta.props.iconPosition = 'middle'; })
   ];
   for (const [index, document] of cases.entries()) {
     const js = runJs(document), phpResult = runPhp(document);

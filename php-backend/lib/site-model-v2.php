@@ -153,6 +153,7 @@ function nimble_v2_value(string $type, mixed $input, array $ctx): mixed
     if ($kind === 'cell') return nimble_v2_ints($input, 4, 1, $limits['gridLines']);
     if ($kind === 'color') return nimble_v2_color($input, $ctx);
     if ($kind === 'font') return is_string($input) && isset($ctx['fonts'][$input]) ? $input : null;
+    if ($kind === 'icon') return is_string($input) && array_key_exists($input, nimble_v2_spec()['icons']) ? $input : null;
     if ($kind === 'background') return nimble_v2_background($input, $ctx);
     if ($kind === 'border') return nimble_v2_border($input, $ctx);
     if ($kind === 'shadows') return nimble_v2_shadows($input, $ctx);

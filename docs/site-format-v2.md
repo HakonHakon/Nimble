@@ -39,6 +39,8 @@ v2 replaces the fixed block list with an element tree whose layout, placement an
   - `{ id, source: 'custom', family, files: [{ src, weight, style }] }` for self-hosted Google fonts (up to 12 files)
 
   `heading` and `body` always exist. Each `@font-face` is declared once, even when several ids share a family.
+- **Icons.** `spec.icons` maps names to 24×24 stroke paths. `icon` elements have `{ icon, label?, link?, weight? }`. Buttons accept `icon`, `iconPosition` (`start`/`end`) and `hideLabel`. Both backends render the same `<svg>` markup from the spec.
+- **Lines.** `divider` props are `orientation` (`horizontal`/`vertical`), `thickness` and `lineStyle`.
 - **Saved designs.** `design.presets` is a list of `{ id, name, type, style? }` (up to 50). `style` is a normal breakpoint style map. Applying one copies it to the element.
 - **Rich text.** `props.doc` is a list of blocks (`p`, `h1`–`h6`, `ul`, `ol`).
   - **Blocks** can have:

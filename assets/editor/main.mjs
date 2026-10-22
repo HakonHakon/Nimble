@@ -138,6 +138,7 @@ const ctx = {
   commit, select, selectMany, remove, upload, editable, toast,
   store: () => app.store,
   editText: id => rich.start(id),
+  insertDrag: (event, type, text, onDrop) => transformer.insertDrag(event, type, text, onDrop),
   arrange: action => arranger.run(action),
   canArrange: action => arranger.available(action),
   api: (url, options) => api(url, options),

@@ -5,7 +5,7 @@ export const TYPES = {
   section: { label: 'Section', icon: '▭' }, container: { label: 'Container', icon: '▢' }, text: { label: 'Text', icon: 'T' },
   image: { label: 'Image', icon: '▨' }, button: { label: 'Button', icon: '⬭' }, video: { label: 'Video', icon: '▶' },
   gallery: { label: 'Gallery', icon: '▦' }, form: { label: 'Contact form', icon: '✉' }, shape: { label: 'Shape', icon: '◆' },
-  spacer: { label: 'Spacer', icon: '↕' }, divider: { label: 'Line', icon: '―' }, menu: { label: 'Menu', icon: '☰' }
+  spacer: { label: 'Spacer', icon: '↕' }, divider: { label: 'Line', icon: '―' }, menu: { label: 'Menu', icon: '☰' }, icon: { label: 'Icon', icon: '★' }
 };
 export const isContainer = type => !!spec.nodeTypes[type]?.container;
 export const isRoot = type => !!spec.nodeTypes[type]?.root;
@@ -85,15 +85,19 @@ export function moveOps(doc, index, id, target) {
 }
 
 const SECTION_LAYOUT = { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['60px', '35px', '60px', '35px'], contentWidth: '1022px' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } };
-// [kind, label, group] — kinds map to element types in createNode.
+// [kind, label, group, search words] — kinds map to element types in createNode.
 export const ADDABLE = [
-  ['section', 'Section (boxed)', 'Sections'], ['section-full', 'Section (full width)', 'Sections'], ['section-screen', 'Full-screen section', 'Sections'], ['section-columns', 'Two-column section', 'Sections'],
-  ['grid', 'Grid', 'Layout'], ['grid-3', '3-column grid', 'Layout'], ['stack', 'Vertical stack', 'Layout'], ['stack-row', 'Horizontal stack', 'Layout'], ['container', 'Box', 'Layout'],
-  ['heading', 'Heading'], ['text', 'Paragraph'], ['button', 'Button'],
-  ['image', 'Image'], ['video', 'Video'], ['gallery', 'Gallery'], ['shape', 'Shape'], ['divider', 'Line'], ['spacer', 'Spacer'],
-  ['menu', 'Menu'], ['form', 'Contact form']
+  ['section', 'Section (boxed)', 'Sections', 'strip band area'], ['section-full', 'Section (full width)', 'Sections', 'strip band wide'], ['section-screen', 'Full-screen section', 'Sections', 'hero cover viewport'], ['section-columns', 'Two-column section', 'Sections', 'split columns'],
+  ['grid', 'Grid', 'Layout', 'columns cells'], ['grid-3', '3-column grid', 'Layout', 'columns cards'], ['stack', 'Vertical stack', 'Layout', 'column flex'], ['stack-row', 'Horizontal stack', 'Layout', 'row flex'], ['container', 'Box', 'Layout', 'container card frame'],
+  ['title', 'Title', 'Text', 'h1 heading headline'], ['heading', 'Heading', 'Text', 'h2 subtitle'], ['text', 'Paragraph', 'Text', 'body copy text'], ['text-list', 'Bulleted list', 'Text', 'list bullets points'],
+  ['button', 'Button', 'Buttons', 'call to action cta link'], ['button-outline', 'Outline button', 'Buttons', 'secondary ghost border'], ['button-icon', 'Button with icon', 'Buttons', 'arrow'], ['icon-button', 'Icon button', 'Buttons', 'round circle'],
+  ['image', 'Image', 'Media', 'picture photo svg'], ['video', 'Video', 'Media', 'youtube vimeo mp4 film'], ['gallery', 'Gallery', 'Media', 'images photos grid'],
+  ['shape', 'Rectangle', 'Shapes and icons', 'box square shape'], ['shape-ellipse', 'Circle', 'Shapes and icons', 'ellipse round shape'], ['shape-blob', 'Blob', 'Shapes and icons', 'organic shape'], ['icon', 'Icon', 'Shapes and icons', 'symbol glyph svg'],
+  ['divider', 'Horizontal line', 'Shapes and icons', 'divider rule separator'], ['line-vertical', 'Vertical line', 'Shapes and icons', 'divider separator'], ['spacer', 'Spacer', 'Shapes and icons', 'gap space empty'],
+  ['menu', 'Menu', 'Navigation', 'navigation nav links pages'], ['form', 'Contact form', 'Forms', 'contact message email']
 ];
-const KIND_TYPES = { heading: 'text', 'section-full': 'section', 'section-screen': 'section', 'section-columns': 'section', grid: 'container', 'grid-3': 'container', stack: 'container', 'stack-row': 'container' };
+const KIND_TYPES = { heading: 'text', title: 'text', 'text-list': 'text', 'section-full': 'section', 'section-screen': 'section', 'section-columns': 'section', grid: 'container', 'grid-3': 'container', stack: 'container', 'stack-row': 'container', 'button-outline': 'button', 'button-icon': 'button', 'icon-button': 'button', 'shape-ellipse': 'shape', 'shape-blob': 'shape', 'line-vertical': 'divider' };
+export const typeOfKind = kind => KIND_TYPES[kind] || kind;
 const LAYOUT_PRESETS = {
   'section-full': { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['60px', '35px', '60px', '35px'], contentWidth: 'auto' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } },
   'section-screen': { desktop: { mode: 'grid', columns: ['1fr'], align: 'center', padding: ['60px', '35px', '60px', '35px'], contentWidth: '1022px', minHeight: '100vh' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } },
@@ -103,6 +107,13 @@ const LAYOUT_PRESETS = {
   stack: { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '12px', padding: ['16px', '16px', '16px', '16px'] } },
   'stack-row': { desktop: { mode: 'stack', direction: 'row', align: 'center', wrap: true, columnGap: '16px', rowGap: '12px', padding: ['16px', '16px', '16px', '16px'] } }
 };
+function buttonNode(type, kind) {
+  const base = { background: { kind: 'color', color: '@accent' }, color: '#ffffff', padding: ['12px', '20px', '12px', '20px'], radius: ['8px', '8px', '8px', '8px'], fontWeight: 700 };
+  if (kind === 'button-outline') return { type, props: { label: 'Learn more' }, style: { desktop: { ...base, background: { kind: 'color', color: 'transparent' }, color: '@accent', border: { width: '2px', style: 'solid', color: '@accent', sides: ['top', 'right', 'bottom', 'left'] } } } };
+  if (kind === 'button-icon') return { type, props: { label: 'Learn more', icon: 'arrow-right', iconPosition: 'end' }, style: { desktop: base } };
+  if (kind === 'icon-button') return { type, props: { label: 'Next', icon: 'arrow-right', hideLabel: true }, style: { desktop: { ...base, padding: ['12px', '12px', '12px', '12px'], radius: ['999px', '999px', '999px', '999px'] } } };
+  return { type, props: { label: 'Learn more' }, style: { desktop: base } };
+}
 export function createNode(doc, kind) {
   const type = KIND_TYPES[kind] || kind;
   const id = newId(doc, type === 'section' ? 'section' : type);
@@ -111,15 +122,18 @@ export function createNode(doc, kind) {
   const nodes = {
     section: { type, name: 'Section', children: [], layout: structuredClone(SECTION_LAYOUT) },
     container: { type, children: [], layout: { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '12px', padding: ['16px', '16px', '16px', '16px'] } }, place: full },
-    text: kind === 'heading'
-      ? { type, props: { doc: [{ t: 'h2', c: [{ text: 'Your heading' }] }] }, place: full }
-      : { type, props: { doc: [{ t: 'p', c: [{ text: 'Write something your visitors should know.' }] }] }, place: { desktop: { width: '100%', maxWidth: '700px' } } },
-    button: { type, props: { label: 'Learn more' }, style: { desktop: { background: { kind: 'color', color: '@accent' }, color: '#ffffff', padding: ['12px', '20px', '12px', '20px'], radius: ['8px', '8px', '8px', '8px'], fontWeight: 700 } } },
+    text: kind === 'heading' || kind === 'title'
+      ? { type, props: { doc: [{ t: kind === 'title' ? 'h1' : 'h2', c: [{ text: kind === 'title' ? 'Your title' : 'Your heading' }] }] }, place: full }
+      : kind === 'text-list'
+        ? { type, props: { doc: [{ t: 'ul', items: [[{ text: 'First point' }], [{ text: 'Second point' }], [{ text: 'Third point' }]] }] }, place: { desktop: { width: '100%', maxWidth: '700px' } } }
+        : { type, props: { doc: [{ t: 'p', c: [{ text: 'Write something your visitors should know.' }] }] }, place: { desktop: { width: '100%', maxWidth: '700px' } } },
+    button: buttonNode(type, kind),
+    icon: { type, props: { icon: 'star' }, place: { desktop: { width: '40px', height: '40px' } }, style: { desktop: { color: '@accent' } } },
     image: { type, props: { src: firstImage, alt: '', fit: 'cover' }, place: { desktop: { width: '100%', height: '280px' } } },
     video: { type, props: { title: 'Video' }, place: full },
     gallery: { type, props: {}, place: full },
-    shape: { type, props: { shape: 'rect' }, place: { desktop: { width: '120px', height: '120px' } }, style: { desktop: { background: { kind: 'color', color: '@accent' } } } },
-    divider: { type, place: full, style: { desktop: { color: '@line' } } },
+    shape: { type, props: { shape: kind === 'shape-ellipse' ? 'ellipse' : kind === 'shape-blob' ? 'blob' : 'rect' }, place: { desktop: { width: '120px', height: '120px' } }, style: { desktop: { background: { kind: 'color', color: '@accent' } } } },
+    divider: kind === 'line-vertical' ? { type, props: { orientation: 'vertical' }, place: { desktop: { height: '120px' } }, style: { desktop: { color: '@line' } } } : { type, place: full, style: { desktop: { color: '@line' } } },
     spacer: { type, place: { desktop: { height: '40px' } } },
     menu: { type, props: { orientation: 'horizontal', activeColor: '@accent' } },
     form: { type, props: {}, place: { desktop: { width: '100%', maxWidth: '650px' } } }

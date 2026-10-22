@@ -1,7 +1,7 @@
 // Inspector: tabs generated from lib/nimble-spec.json. Responsive groups (layout, placement, style)
 // write to the current breakpoint only and show the inherited value when no override exists.
 import { spec } from '/assets/site-model-v2.mjs';
-import { escapeHtml as esc } from '/assets/render-v2.mjs';
+import { escapeHtml as esc, iconSvg } from '/assets/render-v2.mjs';
 import { TYPES, label, ancestors } from './tree.mjs';
 import { hiddenAt } from './layers.mjs';
 import { createLayoutPanel } from './layout-panel.mjs';
@@ -17,6 +17,7 @@ const LABELS = {
   src: 'Source', alt: 'Alt text', fit: 'Image fit', link: 'Link', label: 'Label', poster: 'Poster image', title: 'Title', controls: 'Show controls', autoplay: 'Autoplay (muted)',
   loop: 'Loop', muted: 'Muted', images: 'Images (one URL per line)', minItemWidth: 'Min item width', itemHeight: 'Item height', gap: 'Gap', submitLabel: 'Button label',
   note: 'Privacy note', shape: 'Shape', orientation: 'Orientation', activeColor: 'Current page colour', doc: 'Text',
+  icon: 'Icon', iconPosition: 'Icon position', hideLabel: 'Show icon only', thickness: 'Thickness', lineStyle: 'Line style', weight: 'Stroke width',
   blendMode: 'Blend mode', scrollEffect: 'Scroll effect', borderColor: 'Border colour', scale: 'Scale', translateY: 'Move up/down', duration: 'Transition (ms)'
 };
 const HOVER_LABELS = { color: 'Text colour', background: 'Background', borderColor: 'Border colour', shadow: 'Shadow', opacity: 'Opacity', scale: 'Scale', translateY: 'Move up/down', duration: 'Transition (ms)' };
@@ -235,9 +236,17 @@ export function createInspector(root, ctx) {
       else if (type === 'media' || type === 'video') body = '<span class="pair"><input data-part="value" list="' + (type === 'video' ? 'mediaVideos' : 'mediaImages') + '" value="' + esc(value || '') + '" placeholder="/uploads/… or https://…"><button class="btn btn-small" data-upload="' + (type === 'video' ? 'video' : 'image') + '">Upload</button></span>';
       else if (type === 'mediaList') body = '<textarea data-part="value" rows="4" placeholder="Empty = first 6 library images">' + esc((value || []).join('\n')) + '</textarea>';
       else if (type === 'link') body = linkControl(key, value);
+      else if (type === 'icon') body = iconPicker(value, node.type !== 'icon');
       else body = control(type, value, undefined);
       return '<div class="field" data-group="props" data-key="' + key + '" data-type="' + esc(type) + '">' + head + body + '</div>';
     }).join('');
+  }
+  // The bundled icon set as a grid; buttons can also have no icon.
+  function iconPicker(value, optional) {
+    const names = Object.keys(spec.icons);
+    return '<details class="icon-picker"><summary>' + (value ? iconSvg(value) + '<span>' + esc(value) + '</span>' : '<span class="muted">No icon</span>') + '<span class="muted">· change</span></summary><div class="icon-grid" role="listbox" aria-label="Icons">'
+      + (optional ? '<button type="button" class="none" data-icon-pick="" aria-pressed="' + !value + '" title="No icon">None</button>' : '')
+      + names.map(name => '<button type="button" data-icon-pick="' + name + '" aria-pressed="' + (name === value) + '" title="' + name + '" aria-label="' + name + '">' + iconSvg(name) + '</button>').join('') + '</div></details>';
   }
   function richControl(doc) {
     return '<div class="rich">' + doc.map((block, i) => {
@@ -379,6 +388,8 @@ export function createInspector(root, ctx) {
     if (event.target.closest('[data-part=remove],[data-part=add-block]')) return commitRich(event.target.closest('[data-part]'));
     if (event.target.closest('[data-delete]')) return ctx.remove(ctx.state().selected);
     if (event.target.closest('[data-edit-text]')) return void ctx.editText(ctx.state().selected);
+    const pick = event.target.closest('[data-icon-pick]');
+    if (pick && field) return void ctx.commit([{ path: ['nodes', ctx.state().selected, 'props', field.dataset.key], value: pick.dataset.iconPick || undefined }], { label: 'Icon' });
     const upload = event.target.closest('[data-upload]');
     if (upload && field) {
       ctx.upload(upload.dataset.upload).then(url => {

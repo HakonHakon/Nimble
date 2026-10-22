@@ -1,36 +1,67 @@
 // Left-panel tools other than Layers: Add elements and Pages.
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
-import { ADDABLE, TYPES, createNode, insertionTarget, newId, descendants } from './tree.mjs';
+import { ADDABLE, TYPES, createNode, insertionTarget, newId, descendants, typeOfKind } from './tree.mjs';
+
+const KIND_ICONS = { heading: 'H', title: 'H1', 'text-list': '•≡', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭', 'button-outline': '▭', 'button-icon': '→', 'icon-button': '◉', 'shape-ellipse': '●', 'shape-blob': '⬮', 'line-vertical': '│' };
 
 export function createAddPanel(root, ctx) {
-  const groups = [];
-  for (const [kind, text, group = 'Elements'] of ADDABLE) {
-    if (!groups.length || groups[groups.length - 1].name !== group) groups.push({ name: group, items: [] });
-    groups[groups.length - 1].items.push([kind, text]);
+  let query = '';
+  const icon = kind => KIND_ICONS[kind] || TYPES[typeOfKind(kind)]?.icon || '•';
+  function render() {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const matches = ADDABLE.filter(([kind, text, group, keywords = '']) => words.every(word => (text + ' ' + group + ' ' + keywords + ' ' + kind).toLowerCase().includes(word)));
+    const groups = [];
+    for (const [kind, text, group] of matches) {
+      if (!groups.length || groups[groups.length - 1].name !== group) groups.push({ name: group, items: [] });
+      groups[groups.length - 1].items.push([kind, text]);
+    }
+    root.querySelector('.add-results').innerHTML = groups.length
+      ? groups.map(group => '<h3>' + esc(group.name) + '</h3><div class="add-grid">' + group.items.map(([kind, text]) => '<button class="add-item" data-add="' + kind + '" title="Click to add, or drag onto the page"><span aria-hidden="true">' + icon(kind) + '</span>' + esc(text) + '</button>').join('') + '</div>').join('')
+      : '<p class="empty">No elements match “' + esc(query) + '”.</p>';
   }
-  const icon = kind => ({ heading: 'H', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭' })[kind] || TYPES[kind]?.icon || '•';
-  root.innerHTML = '<div class="panel-head"><h2 class="panel-title">Add elements</h2></div><p class="panel-subtitle">Elements go into the selected container, or after the selected element.</p>'
-    + groups.map(group => '<h3>' + esc(group.name) + '</h3><div class="add-grid">' + group.items.map(([kind, text]) => '<button class="add-item" data-add="' + kind + '"><span aria-hidden="true">' + icon(kind) + '</span>' + esc(text) + '</button>').join('') + '</div>').join('');
-  root.addEventListener('click', event => {
-    const button = event.target.closest('[data-add]');
-    if (!button || !ctx.editable()) return;
-    const { doc, index, page, selected } = ctx.state();
-    const { id, node } = createNode(doc, button.dataset.add);
-    let target = insertionTarget(doc, index, page, selected, node.type);
+  root.innerHTML = '<div class="panel-head"><h2 class="panel-title">Add elements</h2></div><p class="panel-subtitle">Click to add into the selected container or after the selected element, or drag onto the page.</p>'
+    + '<input type="search" class="add-search" placeholder="Search elements" aria-label="Search elements" spellcheck="false"><div class="add-results"></div>';
+  render();
+  root.querySelector('.add-search').addEventListener('input', event => { query = event.target.value; render(); });
+
+  // Builds the operations that insert `node` at a target from insertionTarget() or a canvas drop.
+  function insertOps(doc, page, id, node, target) {
     const ops = [{ path: ['nodes', id], value: node }];
     if (!target) {
       // Empty page: create a section first and put the element inside it.
       const section = createNode(doc, 'section');
       ops.unshift({ path: ['nodes', section.id], value: { ...section.node, children: [id] } });
       ops.push({ path: ['pages', doc.pages.indexOf(page), 'children'], value: [...page.children, section.id] });
-    } else {
-      const list = target.parent === null ? page.children : doc.nodes[target.parent].children;
-      const next = list.slice(); next.splice(target.position, 0, id);
-      ops.push({ path: target.parent === null ? ['pages', target.page, 'children'] : ['nodes', target.parent, 'children'], value: next });
+      return ops;
     }
-    if (ctx.commit(ops, { label: 'Add ' + button.textContent.trim() })) ctx.select(id, { source: 'add', reveal: true });
-    else return;
+    const list = target.parent === null ? page.children : doc.nodes[target.parent].children;
+    const next = list.slice(); next.splice(Math.min(target.position, next.length), 0, id);
+    ops.push({ path: target.parent === null ? ['pages', doc.pages.indexOf(page), 'children'] : ['nodes', target.parent, 'children'], value: next });
+    return ops;
+  }
+  function add(kind, text, drop = null) {
+    if (!ctx.editable()) return;
+    const { doc, index, page, selected, bp } = ctx.state();
+    const { id, node } = createNode(doc, kind);
+    let target;
+    if (drop) {
+      target = { parent: drop.kind === 'root' ? null : drop.parent, position: drop.position };
+      // In a grid the element is docked where it was dropped (on this breakpoint).
+      if (drop.kind === 'grid') node.place = { ...(node.place || {}), [bp]: { ...(node.place?.[bp] || {}), ...drop.values } };
+    } else target = insertionTarget(doc, index, page, selected, node.type);
+    if (!ctx.commit(insertOps(doc, page, id, node, target), { label: 'Add ' + text })) return;
+    ctx.select(id, { source: 'add', reveal: true });
     if (node.children) ctx.showLayout?.();
+  }
+  root.addEventListener('click', event => {
+    const button = event.target.closest('[data-add]');
+    if (button) add(button.dataset.add, button.textContent.trim());
+  });
+  root.addEventListener('pointerdown', event => {
+    const button = event.target.closest('[data-add]');
+    if (!button) return;
+    const kind = button.dataset.add, text = button.textContent.trim();
+    ctx.insertDrag(event, typeOfKind(kind), text, drop => add(kind, text, drop));
   });
   return { render() {} };
 }

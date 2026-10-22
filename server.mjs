@@ -200,7 +200,7 @@ function templateInput(body, current = null) {
   return { name, description, document };
 }
 function templateRow(id) { return db.prepare("SELECT * FROM templates WHERE id=? AND site_id='nimble'").get(id); }
-const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
+const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.svg': 'image/svg+xml' };
 async function sendFile(req, res, filename, { html = false, immutable = false } = {}) {
   const info = await fs.stat(filename);
   if (!info.isFile()) throw problem(404, 'Not found.');
@@ -221,11 +221,18 @@ async function sendFile(req, res, filename, { html = false, immutable = false } 
     res.setHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + info.size);
     status = 206;
   }
+  if (path.extname(filename) === '.svg') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
   res.writeHead(status, { 'Content-Type': mime[path.extname(filename)] || 'application/octet-stream', 'Content-Length': Math.max(0, end - start + 1), 'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache' });
   if (req.method === 'HEAD' || info.size === 0) return res.end();
   const stream = createReadStream(filename, { start, end });
   stream.on('error', () => res.destroy());
   stream.pipe(res);
+}
+// SVG files are served with a sandboxing CSP (see sendFile) and shown through <img>, where scripts never run.
+const SVG_START = /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE\s+svg[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/i;
+function isSvg(bytes) {
+  const text = bytes.toString('utf8');
+  return Buffer.from(text, 'utf8').equals(bytes) && SVG_START.test(text.replace(/^\uFEFF/, ''));
 }
 function detectMedia(bytes, type) {
   if (type === 'image/png' && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.length >= 24) return 'png';
@@ -238,11 +245,12 @@ function detectMedia(bytes, type) {
   if (type === 'font/woff' && bytes.subarray(0, 4).toString('latin1') === 'wOFF') return 'woff';
   if (type === 'font/ttf' && (bytes.subarray(0, 4).equals(Buffer.from([0, 1, 0, 0])) || bytes.subarray(0, 4).toString('latin1') === 'true')) return 'ttf';
   if (type === 'font/otf' && bytes.subarray(0, 4).toString('latin1') === 'OTTO') return 'otf';
+  if (type === 'image/svg+xml' && isSvg(bytes)) return 'svg';
   throw problem(400, 'The file contents do not match a supported image, video or font format.');
 }
 let mediaQueue = Promise.resolve();
 async function storeMedia(body) {
-  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif)|video\/(?:mp4|webm)|font\/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$/i);
+  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif|svg\+xml)|video\/(?:mp4|webm)|font\/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$/i);
   if (!match || match[2].length > Math.ceil(maxMediaBytes / 3) * 4) throw problem(400, 'Upload an image, video or font no larger than 15 MB.');
   const bytes = Buffer.from(match[2], 'base64');
   if (bytes.toString('base64') !== match[2] || bytes.length > maxMediaBytes) throw problem(400, 'Invalid media encoding or file size.');
@@ -526,7 +534,7 @@ const server = http.createServer(async (req, res) => {
       return await sendFile(req, res, path.join(root, pathname.slice(1)), { html: true });
     }
     if (pathname === '/login.html') return await sendFile(req, res, path.join(root, 'login.html'), { html: true });
-    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm|woff2|woff|ttf|otf)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
+    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|woff2|woff|ttf|otf)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
     const release = await currentRelease(published);
     if (pathname === '/robots.txt') return send(res, 200, 'User-agent: *\n' + (release?.site.site.searchVisible ? 'Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /editor.html\nDisallow: /control-panel.html\n' : 'Disallow: /\n'), 'text/plain; charset=utf-8');
     if (pathname === '/sitemap.xml' && release && publicOrigin) return send(res, 200, '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + release.site.pages.map(page => '<url><loc>' + escapeHtml(publicOrigin + (page.id === 'home' ? '/' : '/' + page.id + '.html')) + '</loc></url>').join('') + '</urlset>', 'application/xml; charset=utf-8');

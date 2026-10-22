@@ -120,6 +120,13 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
     }
     if ($node['type'] === 'shape' && ($props['shape'] ?? null) === 'ellipse') $rules[$selector]['border-radius'] = '50%';
     if ($node['type'] === 'shape' && ($props['shape'] ?? null) === 'blob') $rules[$selector]['border-radius'] = '38% 62% 58% 42%';
+    if ($node['type'] === 'divider' && (isset($props['thickness']) || isset($props['lineStyle']))) {
+        $side = ($props['orientation'] ?? null) === 'vertical' ? 'border-left' : 'border-top';
+        // Two classes, so it wins over the .t-divider.is-vertical default.
+        if (isset($props['thickness'])) $rules[$selector . '.t-divider'][$side . '-width'] = $props['thickness'];
+        if (isset($props['lineStyle'])) $rules[$selector . '.t-divider'][$side . '-style'] = $props['lineStyle'];
+    }
+    if ($node['type'] === 'icon' && isset($props['weight'])) $rules[$selector . ' svg']['stroke-width'] = nimble_v2_num_string($props['weight']);
     if ($node['type'] === 'menu') {
         $rules[$selector]['flex-direction'] = ($props['orientation'] ?? null) === 'vertical' ? 'column' : 'row';
         if (isset($props['activeColor'])) $rules[$selector . ' a[aria-current]']['color'] = nimble_v2_color_value($props['activeColor']);
@@ -234,6 +241,13 @@ function nimble_v2_link_attributes(array $site, array $link): string
 {
     return ' href="' . nimble_v2_e(nimble_v2_link_href($site, $link)) . '"' . (!empty($link['newTab']) ? ' target="_blank" rel="noopener noreferrer"' : '');
 }
+// Icons are drawn from the bundled set in the spec: stroked 24×24 paths.
+function nimble_v2_icon_svg(string $name): string
+{
+    $paths = '';
+    foreach (nimble_v2_spec()['icons'][$name] ?? [] as $d) $paths .= '<path d="' . $d . '"/>';
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' . $paths . '</svg>';
+}
 // Inline styles of a rich text run (colour first, so colour-only runs keep their v1 markup).
 function nimble_v2_run_css(array $run): string
 {
@@ -307,6 +321,10 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
     }
     if ($node['type'] === 'button') {
         $label = nimble_v2_e(($props['label'] ?? '') !== '' ? $props['label'] : 'Learn more');
+        if (isset($props['icon'])) {
+            $text = !empty($props['hideLabel']) ? '<span class="vh">' . $label . '</span>' : '<span>' . $label . '</span>';
+            $label = ($props['iconPosition'] ?? null) === 'end' ? $text . nimble_v2_icon_svg($props['icon']) : nimble_v2_icon_svg($props['icon']) . $text;
+        }
         return isset($props['link']) ? '<a' . $attributes . nimble_v2_link_attributes($site, $props['link']) . '>' . $label . '</a>' : '<button type="button"' . $attributes . '>' . $label . '</button>';
     }
     if ($node['type'] === 'video') {
@@ -327,7 +345,14 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
     if ($node['type'] === 'form') {
         return '<div' . $attributes . '><form action="/api/contact" method="post" data-contact-form data-block="' . nimble_v2_e($node['id']) . '"><label>Your name<input name="name" autocomplete="name" maxlength="120" required></label><label>Email address<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>Your message<textarea name="message" maxlength="5000" required></textarea></label><div class="honeypot" aria-hidden="true"><label>Leave blank<input name="website" tabindex="-1" autocomplete="off"></label></div><input type="hidden" name="token"><button class="button" type="submit">' . nimble_v2_e(($props['submitLabel'] ?? '') !== '' ? $props['submitLabel'] : 'Send message ↗') . '</button><p role="status" class="form-status" aria-live="polite"></p><small>' . nimble_v2_e($props['note'] ?? 'We use these details only to respond to your enquiry.') . '</small></form></div>';
     }
-    if ($node['type'] === 'divider') return '<hr' . $attributes . '>';
+    if ($node['type'] === 'icon') {
+        $icon = $props['icon'] ?? 'star';
+        $svg = nimble_v2_icon_svg($icon);
+        $name = ($props['label'] ?? '') !== '' ? ' aria-label="' . nimble_v2_e($props['label']) . '"' : '';
+        if (isset($props['link'])) return '<a' . $attributes . nimble_v2_link_attributes($site, $props['link']) . ($name !== '' ? $name : ' aria-label="' . nimble_v2_e($icon) . '"') . '>' . $svg . '</a>';
+        return '<span' . $attributes . ($name !== '' ? ' role="img"' . $name : ' aria-hidden="true"') . '>' . $svg . '</span>';
+    }
+    if ($node['type'] === 'divider') return ($props['orientation'] ?? null) === 'vertical' ? '<hr' . str_replace(' t-divider"', ' t-divider is-vertical"', $attributes) . ' aria-orientation="vertical">' : '<hr' . $attributes . '>';
     if ($node['type'] === 'menu') {
         $links = '';
         foreach ($site['pages'] as $item) $links .= '<a' . ($item['id'] === $page['id'] ? ' aria-current="page"' : '') . ' href="' . nimble_v2_e(nimble_v2_page_href($site, $item['id'])) . '">' . nimble_v2_e($item['name']) . '</a>';

@@ -28,6 +28,12 @@
       { "t": "ul", "lineHeight": 2, "items": [ [ { "text": "One", "highlight": "@brand" } ], [ { "text": "Two", "size": "1.2em" } ] ] }
     ] }, "hover": { "color": "@brand", "duration": 400 }, "style": { "desktop": { "blendMode": "difference" } } },
     "cta": { "type": "button", "props": { "label": "Go" }, "hover": { "background": { "kind": "gradient", "angle": 90, "stops": [ { "color": "@brand", "at": 0 }, { "color": "#ff00aa", "at": 100 } ] }, "borderColor": "#000", "shadow": [ { "y": "8px", "blur": "24px", "color": "#00000040" } ], "opacity": 0.9, "scale": 1.05, "translateY": "-2px" }, "place": { "desktop": { "rotate": 3 } } },
-    "plain": { "type": "section", "hover": { "duration": 0 } }
+    "plain": { "type": "section", "hover": { "duration": 0 }, "children": ["star", "linked-icon", "icon-button", "icon-only", "vline", "hline"] },
+    "star": { "type": "icon", "props": { "icon": "star", "weight": 1.5 }, "style": { "desktop": { "color": "@brand" } }, "place": { "desktop": { "width": "48px", "height": "48px" } } },
+    "linked-icon": { "type": "icon", "props": { "icon": "mail", "label": "Email us", "link": { "to": "email", "address": "hi@example.com" } } },
+    "icon-button": { "type": "button", "props": { "label": "Next", "icon": "arrow-right", "iconPosition": "end", "link": { "to": "url", "href": "https://example.com" } } },
+    "icon-only": { "type": "button", "props": { "label": "Search", "icon": "search", "hideLabel": true } },
+    "vline": { "type": "divider", "props": { "orientation": "vertical", "thickness": "3px", "lineStyle": "dashed" }, "place": { "desktop": { "height": "80px" } } },
+    "hline": { "type": "divider", "props": { "lineStyle": "dotted" } }
   }
 }
