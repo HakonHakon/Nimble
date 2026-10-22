@@ -287,3 +287,8 @@ code{background:var(--soft);padding:2px 6px;border-radius:5px}
 .icon-grid button{height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;display:grid;place-items:center;padding:0}
 .icon-grid button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-dark)}
 .icon-grid .none{font-size:11px;color:var(--muted)}
+/* Phase 8b: media */
+.ml{display:grid;gap:6px}
+.ml-row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:6px;align-items:center}
+.ml-row img{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+.ml-tools{display:flex;gap:2px}.ml-tools .icon-btn{width:24px;height:26px;padding:0}

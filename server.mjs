@@ -200,7 +200,7 @@ function templateInput(body, current = null) {
   return { name, description, document };
 }
 function templateRow(id) { return db.prepare("SELECT * FROM templates WHERE id=? AND site_id='nimble'").get(id); }
-const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.svg': 'image/svg+xml' };
+const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.wav': 'audio/wav' };
 async function sendFile(req, res, filename, { html = false, immutable = false } = {}) {
   const info = await fs.stat(filename);
   if (!info.isFile()) throw problem(404, 'Not found.');
@@ -234,6 +234,7 @@ function isSvg(bytes) {
   const text = bytes.toString('utf8');
   return Buffer.from(text, 'utf8').equals(bytes) && SVG_START.test(text.replace(/^\uFEFF/, ''));
 }
+const AUDIO_TYPES = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav', 'audio/vnd.wave': 'wav' };
 function detectMedia(bytes, type) {
   if (type === 'image/png' && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.length >= 24) return 'png';
   if (type === 'image/jpeg' && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'jpg';
@@ -246,16 +247,21 @@ function detectMedia(bytes, type) {
   if (type === 'font/ttf' && (bytes.subarray(0, 4).equals(Buffer.from([0, 1, 0, 0])) || bytes.subarray(0, 4).toString('latin1') === 'true')) return 'ttf';
   if (type === 'font/otf' && bytes.subarray(0, 4).toString('latin1') === 'OTTO') return 'otf';
   if (type === 'image/svg+xml' && isSvg(bytes)) return 'svg';
-  throw problem(400, 'The file contents do not match a supported image, video or font format.');
+  const audio = AUDIO_TYPES[type];
+  if (audio === 'mp3' && (bytes.subarray(0, 3).toString('latin1') === 'ID3' || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0))) return 'mp3';
+  if (audio === 'm4a' && bytes.subarray(4, 8).toString('latin1') === 'ftyp') return 'm4a';
+  if (audio === 'ogg' && bytes.subarray(0, 4).toString('latin1') === 'OggS') return 'ogg';
+  if (audio === 'wav' && bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WAVE') return 'wav';
+  throw problem(400, 'The file contents do not match a supported image, video, audio or font format.');
 }
 let mediaQueue = Promise.resolve();
 async function storeMedia(body) {
-  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif|svg\+xml)|video\/(?:mp4|webm)|font\/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$/i);
-  if (!match || match[2].length > Math.ceil(maxMediaBytes / 3) * 4) throw problem(400, 'Upload an image, video or font no larger than 15 MB.');
+  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif|svg\+xml)|video\/(?:mp4|webm)|audio\/(?:mpeg|mp3|mp4|x-m4a|m4a|ogg|wav|x-wav|wave|vnd\.wave)|font\/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$/i);
+  if (!match || match[2].length > Math.ceil(maxMediaBytes / 3) * 4) throw problem(400, 'Upload an image, video, audio file or font no larger than 15 MB.');
   const bytes = Buffer.from(match[2], 'base64');
   if (bytes.toString('base64') !== match[2] || bytes.length > maxMediaBytes) throw problem(400, 'Invalid media encoding or file size.');
   const extension = detectMedia(bytes, match[1].toLowerCase());
-  const kind = match[1].toLowerCase().startsWith('video') ? 'video' : match[1].toLowerCase().startsWith('font') ? 'font' : 'image';
+  const kind = match[1].toLowerCase().split('/')[0] === 'image' ? 'image' : match[1].toLowerCase().split('/')[0];
   return saveUpload(bytes, extension, String(body.name || 'Media').slice(0, 200), kind);
 }
 function saveUpload(bytes, extension, name, kind) {
@@ -534,7 +540,7 @@ const server = http.createServer(async (req, res) => {
       return await sendFile(req, res, path.join(root, pathname.slice(1)), { html: true });
     }
     if (pathname === '/login.html') return await sendFile(req, res, path.join(root, 'login.html'), { html: true });
-    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|woff2|woff|ttf|otf)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
+    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|mp3|m4a|ogg|wav|woff2|woff|ttf|otf)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
     const release = await currentRelease(published);
     if (pathname === '/robots.txt') return send(res, 200, 'User-agent: *\n' + (release?.site.site.searchVisible ? 'Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /editor.html\nDisallow: /control-panel.html\n' : 'Disallow: /\n'), 'text/plain; charset=utf-8');
     if (pathname === '/sitemap.xml' && release && publicOrigin) return send(res, 200, '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + release.site.pages.map(page => '<url><loc>' + escapeHtml(publicOrigin + (page.id === 'home' ? '/' : '/' + page.id + '.html')) + '</loc></url>').join('') + '</urlset>', 'application/xml; charset=utf-8');

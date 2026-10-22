@@ -17,6 +17,7 @@ const LABELS = {
   src: 'Source', alt: 'Alt text', fit: 'Image fit', link: 'Link', label: 'Label', poster: 'Poster image', title: 'Title', controls: 'Show controls', autoplay: 'Autoplay (muted)',
   loop: 'Loop', muted: 'Muted', images: 'Images (one URL per line)', minItemWidth: 'Min item width', itemHeight: 'Item height', gap: 'Gap', submitLabel: 'Button label',
   note: 'Privacy note', shape: 'Shape', orientation: 'Orientation', activeColor: 'Current page colour', doc: 'Text',
+  filter: 'Filter', focal: 'Focal point', layout: 'Layout', lightbox: 'Open images full screen', interval: 'Seconds per slide', captions: 'Captions',
   icon: 'Icon', iconPosition: 'Icon position', hideLabel: 'Show icon only', thickness: 'Thickness', lineStyle: 'Line style', weight: 'Stroke width',
   blendMode: 'Blend mode', scrollEffect: 'Scroll effect', borderColor: 'Border colour', scale: 'Scale', translateY: 'Move up/down', duration: 'Transition (ms)'
 };
@@ -148,6 +149,10 @@ export function createInspector(root, ctx) {
       return values.map((value, i) => Number(value) || inherited?.[i] || 1);
     }
     if (kind === 'color') return readColor(field);
+    if (kind === 'point') {
+      const x = part('x').value, y = part('y').value;
+      return x === '' && y === '' ? undefined : [Math.max(0, Math.min(100, Number(x || 50))), Math.max(0, Math.min(100, Number(y || 50)))];
+    }
     if (kind === 'border') {
       if (part('clear')?.dataset.clicked) return undefined;
       const sides = ['top', 'right', 'bottom', 'left'].filter(side => part('side-' + side).checked);
@@ -233,13 +238,38 @@ export function createInspector(root, ctx) {
       let body;
       if (type === 'richtext') body = richControl(value || []);
       else if (type.startsWith('text:')) body = Number(type.slice(5)) > 200 ? '<textarea data-part="value" rows="3">' + esc(value || '') + '</textarea>' : '<input data-part="value" value="' + esc(value || '') + '">';
-      else if (type === 'media' || type === 'video') body = '<span class="pair"><input data-part="value" list="' + (type === 'video' ? 'mediaVideos' : 'mediaImages') + '" value="' + esc(value || '') + '" placeholder="/uploads/… or https://…"><button class="btn btn-small" data-upload="' + (type === 'video' ? 'video' : 'image') + '">Upload</button></span>';
-      else if (type === 'mediaList') body = '<textarea data-part="value" rows="4" placeholder="Empty = first 6 library images">' + esc((value || []).join('\n')) + '</textarea>';
+      else if (type === 'media' || type === 'video' || type === 'audio') body = '<span class="pair"><input data-part="value" list="' + ({ video: 'mediaVideos', audio: 'mediaAudio' }[type] || 'mediaImages') + '" value="' + esc(value || '') + '" placeholder="/uploads/… or https://…"><button class="btn btn-small" data-upload="' + (type === 'media' ? 'image' : type) + '">Upload</button></span>';
+      else if (type === 'textList') return '';
+      else if (type === 'point') body = pointControl(value, node.type === 'image' ? props.src : '');
+      else if (type === 'mediaList') body = galleryControl(value, props.captions || []);
       else if (type === 'link') body = linkControl(key, value);
       else if (type === 'icon') body = iconPicker(value, node.type !== 'icon');
       else body = control(type, value, undefined);
       return '<div class="field" data-group="props" data-key="' + key + '" data-type="' + esc(type) + '">' + head + body + '</div>';
     }).join('');
+  }
+  // Gallery images with captions: reorder, remove, add from the library or upload.
+  function galleryControl(images, captions) {
+    const library = ctx.state().doc.assets.filter(asset => asset.kind === 'image');
+    const rows = images ? images.map((url, i) => '<div class="ml-row" data-ml="' + i + '"><img src="' + esc(url) + '" alt=""><input data-ml-caption="' + i + '" value="' + esc(captions[i] || '') + '" placeholder="Caption" aria-label="Caption ' + (i + 1) + '" maxlength="300">'
+      + '<span class="ml-tools"><button type="button" class="icon-btn" data-ml-move="-1" aria-label="Move image ' + (i + 1) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button><button type="button" class="icon-btn" data-ml-move="1" aria-label="Move image ' + (i + 1) + ' down"' + (i === images.length - 1 ? ' disabled' : '') + '>↓</button><button type="button" class="icon-btn" data-ml-remove aria-label="Remove image ' + (i + 1) + '">×</button></span></div>').join('')
+      : '<p class="hint">Showing the first 6 images from the media library. Add images to choose your own.</p>';
+    return '<div class="ml">' + rows + '<div class="pair"><select data-ml-add aria-label="Add an image from the library"><option value="">Add from library…</option>' + library.map(asset => '<option value="' + esc(asset.url) + '">' + esc(asset.name) + '</option>').join('') + '</select><button type="button" class="btn btn-small" data-ml-upload>Upload</button></div></div>';
+  }
+  function commitGallery(images, captions) {
+    const { selected } = ctx.state();
+    while (captions.length && !captions[captions.length - 1]) captions.pop();
+    return ctx.commit([{ path: ['nodes', selected, 'props', 'images'], value: images }, { path: ['nodes', selected, 'props', 'captions'], value: captions.length ? captions : undefined }], { label: 'Gallery images' });
+  }
+  function galleryState() {
+    const props = ctx.state().doc.nodes[ctx.state().selected].props || {};
+    const images = (props.images || []).slice();
+    return { images, captions: images.map((_, i) => props.captions?.[i] || '') };
+  }
+  // A point in percent; for images the preview can be clicked.
+  function pointControl(value, src) {
+    return '<span class="stack-field">' + (src && FOCAL_SRC.test(src) ? '<span class="focal" data-point-pick role="button" aria-label="Set focal point" title="Click the part of the image that must stay visible" style="background-image:url(' + esc(src) + ')">' + (value ? '<span class="focal-dot" style="left:' + value[0] + '%;top:' + value[1] + '%"></span>' : '') + '</span>' : '')
+      + '<span class="pair"><input type="number" min="0" max="100" data-part="x" value="' + esc(value?.[0] ?? '') + '" placeholder="50" aria-label="X (%)"><input type="number" min="0" max="100" data-part="y" value="' + esc(value?.[1] ?? '') + '" placeholder="50" aria-label="Y (%)"></span></span>';
   }
   // The bundled icon set as a grid; buttons can also have no icon.
   function iconPicker(value, optional) {
@@ -288,7 +318,7 @@ export function createInspector(root, ctx) {
     root.innerHTML = '<div class="inspector-top"><div class="crumbs">' + chain + '</div><h2 class="inspector-title"><span aria-hidden="true">' + (TYPES[node.type]?.icon || '') + '</span> ' + esc(label(node)) + '</h2><p class="bp-note">' + esc(bpInfo) + '</p>'
       + '<div class="tabs" role="tablist">' + TABS.map(([id, text]) => '<button role="tab" data-tab="' + id + '" aria-selected="' + (tab === id) + '">' + text + '</button>').join('') + '</div></div>'
       + '<div class="tab-body" role="tabpanel">' + body + '</div>'
-      + '<datalist id="paletteColors">' + colorOptions() + '</datalist><datalist id="mediaImages">' + doc.assets.filter(asset => asset.kind === 'image').map(asset => '<option value="' + esc(asset.url) + '">' + esc(asset.name) + '</option>').join('') + '</datalist><datalist id="mediaVideos">' + doc.assets.filter(asset => asset.kind === 'video').map(asset => '<option value="' + esc(asset.url) + '">' + esc(asset.name) + '</option>').join('') + '</datalist>';
+      + '<datalist id="paletteColors">' + colorOptions() + '</datalist><datalist id="mediaImages">' + doc.assets.filter(asset => asset.kind === 'image').map(asset => '<option value="' + esc(asset.url) + '">' + esc(asset.name) + '</option>').join('') + '</datalist><datalist id="mediaVideos">' + doc.assets.filter(asset => asset.kind === 'video').map(asset => '<option value="' + esc(asset.url) + '">' + esc(asset.name) + '</option>').join('') + '</datalist><datalist id="mediaAudio">' + doc.assets.filter(asset => asset.kind === 'audio').map(asset => '<option value="' + esc(asset.url) + '">' + esc(asset.name) + '</option>').join('') + '</datalist>';
     if (node.locked) root.querySelector('.inspector-top').insertAdjacentHTML('beforeend', '<p class="lock-note">Locked: content and style can still be edited.</p>');
     if (!ctx.editable()) root.querySelectorAll('.tab-body input,.tab-body select,.tab-body textarea,.tab-body button').forEach(element => { element.disabled = true; });
   }
@@ -311,7 +341,7 @@ export function createInspector(root, ctx) {
       }
       const input = field.querySelector('[data-part=value]');
       if (type.startsWith('text:')) value = input.value;
-      else if (type === 'media' || type === 'video') value = input.value.trim() || undefined;
+      else if (type === 'media' || type === 'video' || type === 'audio') value = input.value.trim() || undefined;
       else if (type === 'mediaList') { const lines = input.value.split('\n').map(line => line.trim()).filter(Boolean); value = lines.length ? lines : undefined; }
       else value = read(type, field, node.props?.[key], undefined);
       return ctx.commit([{ path: ['nodes', selected, 'props', key], value }], { label: LABELS[key] || key, merge: live ? selected + ':' + key : null });
@@ -388,6 +418,26 @@ export function createInspector(root, ctx) {
     if (event.target.closest('[data-part=remove],[data-part=add-block]')) return commitRich(event.target.closest('[data-part]'));
     if (event.target.closest('[data-delete]')) return ctx.remove(ctx.state().selected);
     if (event.target.closest('[data-edit-text]')) return void ctx.editText(ctx.state().selected);
+    const pointPick = event.target.closest('[data-point-pick]');
+    if (pointPick && field) {
+      const r = pointPick.getBoundingClientRect();
+      field.querySelector('[data-part=x]').value = Math.round(Math.max(0, Math.min(100, (event.clientX - r.left) / r.width * 100)));
+      field.querySelector('[data-part=y]').value = Math.round(Math.max(0, Math.min(100, (event.clientY - r.top) / r.height * 100)));
+      return void commitField(field);
+    }
+    const mlRow = event.target.closest('[data-ml]');
+    if (mlRow && event.target.closest('[data-ml-move],[data-ml-remove]')) {
+      const { images, captions } = galleryState(), i = Number(mlRow.dataset.ml);
+      const move = event.target.closest('[data-ml-move]');
+      if (move) {
+        const j = i + Number(move.dataset.mlMove);
+        [images[i], images[j]] = [images[j], images[i]]; [captions[i], captions[j]] = [captions[j], captions[i]];
+      } else { images.splice(i, 1); captions.splice(i, 1); }
+      return void commitGallery(images, captions);
+    }
+    if (event.target.closest('[data-ml-upload]')) {
+      return void ctx.upload('image').then(url => { if (!url) return; const { images, captions } = galleryState(); commitGallery([...images, url], captions); });
+    }
     const pick = event.target.closest('[data-icon-pick]');
     if (pick && field) return void ctx.commit([{ path: ['nodes', ctx.state().selected, 'props', field.dataset.key], value: pick.dataset.iconPick || undefined }], { label: 'Icon' });
     const upload = event.target.closest('[data-upload]');
@@ -409,6 +459,8 @@ export function createInspector(root, ctx) {
     if (event.target.closest('.lp')) { layoutPanel.onChange(event, root); return; }
     if (!ctx.editable()) return;
     if (event.target.matches('[data-preset-apply]')) return applyPreset(event.target.value);
+    if (event.target.matches('[data-ml-add]') && event.target.value) { const { images, captions } = galleryState(); return void commitGallery([...images, event.target.value], captions); }
+    if (event.target.matches('[data-ml-caption]')) { const { images, captions } = galleryState(); captions[Number(event.target.dataset.mlCaption)] = event.target.value.trim(); return void commitGallery(images, captions); }
     const target = event.target, field = target.closest('.field');
     if (!field) return;
     if (target.dataset.block !== undefined && target.dataset.part === 'tag') return commitRich(target);

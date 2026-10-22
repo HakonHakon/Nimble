@@ -72,6 +72,7 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
     $container = !empty($definition['container']);
     $display = $definition['display'];
     if ($container) $display = ($layout['mode'] ?? null) === 'stack' ? 'flex' : 'grid';
+    if ($node['type'] === 'gallery' && in_array($node['props']['layout'] ?? null, ['masonry', 'slider'], true)) $display = 'block';
     $rules[$selector]['display'] = nimble_v2_hidden_at($node, $ids, $index) ? 'none' : $display;
     if ($container) {
         if ($display === 'flex') {
@@ -113,10 +114,21 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
     }
     $props = $node['props'] ?? [];
     if ($node['type'] === 'image' && isset($props['fit'])) $rules[$selector . ' img']['object-fit'] = $props['fit'];
+    if ($node['type'] === 'image' && isset($props['focal'])) $rules[$selector . ' img']['object-position'] = nimble_v2_num_string($props['focal'][0]) . '% ' . nimble_v2_num_string($props['focal'][1]) . '%';
     if ($node['type'] === 'gallery') {
-        $rules[$selector]['grid-template-columns'] = 'repeat(auto-fill,minmax(' . ($props['minItemWidth'] ?? '180px') . ',1fr))';
-        $rules[$selector]['gap'] = $props['gap'] ?? '16px';
-        $rules[$selector . '>img']['height'] = $props['itemHeight'] ?? '250px';
+        $layout = $props['layout'] ?? 'grid';
+        if ($layout === 'grid') {
+            $rules[$selector]['grid-template-columns'] = 'repeat(auto-fill,minmax(' . ($props['minItemWidth'] ?? '180px') . ',1fr))';
+            $rules[$selector]['gap'] = $props['gap'] ?? '16px';
+            $rules[$selector . (nimble_v2_gallery_figures($props) ? '>figure img' : '>img')]['height'] = $props['itemHeight'] ?? '250px';
+        } elseif ($layout === 'masonry') {
+            $rules[$selector]['column-width'] = $props['minItemWidth'] ?? '180px';
+            $rules[$selector]['column-gap'] = $props['gap'] ?? '16px';
+            $rules[$selector . '>figure']['margin-bottom'] = $props['gap'] ?? '16px';
+        } else {
+            $rules[$selector . ' .g-track']['gap'] = $props['gap'] ?? '0px';
+            $rules[$selector . ' figure img']['height'] = $props['itemHeight'] ?? '420px';
+        }
     }
     if ($node['type'] === 'shape' && ($props['shape'] ?? null) === 'ellipse') $rules[$selector]['border-radius'] = '50%';
     if ($node['type'] === 'shape' && ($props['shape'] ?? null) === 'blob') $rules[$selector]['border-radius'] = '38% 62% 58% 42%';
@@ -145,6 +157,7 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
         $rules[$selector . '>.bg-overlay']['background'] = isset($active['overlay']) ? nimble_v2_color_value($active['overlay']) : 'transparent';
     }
     if (isset($style['blendMode'])) $rules[$selector]['mix-blend-mode'] = $style['blendMode'];
+    if (isset($style['filter'])) $rules[$selector]['filter'] = NIMBLE_V2_FILTERS[$style['filter']];
     if (isset($style['scrollEffect'])) {
         $rules[$selector]['--fx'] = $style['scrollEffect'];
         $rules[$selector]['background-attachment'] = $style['scrollEffect'] === 'reveal' ? 'fixed' : 'scroll';
@@ -240,6 +253,12 @@ function nimble_v2_link_href(array $site, array $link): string
 function nimble_v2_link_attributes(array $site, array $link): string
 {
     return ' href="' . nimble_v2_e(nimble_v2_link_href($site, $link)) . '"' . (!empty($link['newTab']) ? ' target="_blank" rel="noopener noreferrer"' : '');
+}
+const NIMBLE_V2_FILTERS = ['none' => 'none', 'grayscale' => 'grayscale(1)', 'sepia' => 'sepia(0.8)', 'blur' => 'blur(3px)', 'brighten' => 'brightness(1.2)', 'darken' => 'brightness(0.75)', 'contrast' => 'contrast(1.35)', 'saturate' => 'saturate(1.6)', 'vintage' => 'sepia(0.35) contrast(1.1) saturate(0.8) brightness(1.05)'];
+// Plain grids keep the original <img> markup; captions, lightbox and other layouts use figures.
+function nimble_v2_gallery_figures(array $props): bool
+{
+    return (isset($props['layout']) && $props['layout'] !== 'grid') || !empty($props['lightbox']) || !empty($props['captions']);
 }
 // Icons are drawn from the bundled set in the spec: stroked 24×24 paths.
 function nimble_v2_icon_svg(string $name): string
@@ -338,9 +357,22 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
     }
     if ($node['type'] === 'gallery') {
         $images = $props['images'] ?? array_map(static fn($asset) => $asset['url'], array_slice(array_values(array_filter($site['assets'], static fn($asset) => $asset['kind'] === 'image')), 0, 6));
-        $inner = '';
-        foreach ($images as $url) $inner .= '<img loading="lazy" decoding="async" src="' . nimble_v2_e(nimble_v2_safe_url($url)) . '" alt="' . nimble_v2_e($props['alt'] ?? '') . '">';
-        return '<div' . $attributes . '>' . $inner . '</div>';
+        $image = static fn($url) => '<img loading="lazy" decoding="async" src="' . nimble_v2_e(nimble_v2_safe_url($url)) . '" alt="' . nimble_v2_e($props['alt'] ?? '') . '">';
+        if (!nimble_v2_gallery_figures($props)) return '<div' . $attributes . '>' . implode('', array_map($image, $images)) . '</div>';
+        $layout = $props['layout'] ?? 'grid';
+        $figures = '';
+        foreach (array_values($images) as $i => $url) {
+            $caption = $props['captions'][$i] ?? '';
+            $figures .= '<figure class="g-item">' . (!empty($props['lightbox']) ? '<a class="g-open" href="' . nimble_v2_e(nimble_v2_safe_url($url)) . '">' . $image($url) . '</a>' : $image($url)) . ($caption !== '' ? '<figcaption>' . nimble_v2_e($caption) . '</figcaption>' : '') . '</figure>';
+        }
+        $open = '<div' . str_replace(' t-gallery"', ' t-gallery is-' . $layout . '"', $attributes) . (!empty($props['lightbox']) ? ' data-lightbox' : '');
+        if ($layout !== 'slider') return $open . '>' . $figures . '</div>';
+        return $open . ' data-slider' . (!empty($props['autoplay']) ? ' data-autoplay="' . ($props['interval'] ?? 5) . '"' : '') . ' aria-roledescription="carousel"><div class="g-track">' . $figures . '</div><button type="button" class="g-prev" aria-label="Previous image">‹</button><button type="button" class="g-next" aria-label="Next image">›</button></div>';
+    }
+    if ($node['type'] === 'audio') {
+        $title = ($props['title'] ?? '') !== '' ? '<p class="a-title">' . nimble_v2_e($props['title']) . '</p>' : '';
+        $player = !empty($props['src']) ? '<audio controls preload="metadata"' . (!empty($props['autoplay']) ? ' autoplay' : '') . (!empty($props['loop']) ? ' loop' : '') . ' src="' . nimble_v2_e($props['src']) . '">Your browser does not support audio.</audio>' : '<p class="muted">Audio coming soon.</p>';
+        return '<div' . $attributes . '>' . $title . $player . '</div>';
     }
     if ($node['type'] === 'form') {
         return '<div' . $attributes . '><form action="/api/contact" method="post" data-contact-form data-block="' . nimble_v2_e($node['id']) . '"><label>Your name<input name="name" autocomplete="name" maxlength="120" required></label><label>Email address<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>Your message<textarea name="message" maxlength="5000" required></textarea></label><div class="honeypot" aria-hidden="true"><label>Leave blank<input name="website" tabindex="-1" autocomplete="off"></label></div><input type="hidden" name="token"><button class="button" type="submit">' . nimble_v2_e(($props['submitLabel'] ?? '') !== '' ? $props['submitLabel'] : 'Send message ↗') . '</button><p role="status" class="form-status" aria-live="polite"></p><small>' . nimble_v2_e($props['note'] ?? 'We use these details only to respond to your enquiry.') . '</small></form></div>';

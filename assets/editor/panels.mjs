@@ -2,7 +2,7 @@
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { ADDABLE, TYPES, createNode, insertionTarget, newId, descendants, typeOfKind } from './tree.mjs';
 
-const KIND_ICONS = { heading: 'H', title: 'H1', 'text-list': '•≡', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭', 'button-outline': '▭', 'button-icon': '→', 'icon-button': '◉', 'shape-ellipse': '●', 'shape-blob': '⬮', 'line-vertical': '│' };
+const KIND_ICONS = { heading: 'H', title: 'H1', 'text-list': '•≡', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭', 'button-outline': '▭', 'button-icon': '→', 'icon-button': '◉', 'shape-ellipse': '●', 'shape-blob': '⬮', 'line-vertical': '│', 'gallery-masonry': '▥', slideshow: '◧' };
 
 export function createAddPanel(root, ctx) {
   let query = '';

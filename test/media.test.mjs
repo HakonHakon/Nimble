@@ -24,3 +24,25 @@ test('SVG uploads are accepted only when they are SVG, and are served sandboxed'
   const png = await f.request('/uploads/' + svg.data.url.split('/').pop().replace('.svg', '.png'));
   assert.equal(png.status, 404);
 });
+
+test('audio uploads: MP3, M4A, OGG and WAV are checked by content and served with audio types', async t => {
+  const f = await fixture(); t.after(() => f.cleanup());
+  const owner = await f.login();
+  const upload = (name, type, bytes) => f.request('/api/media', { method: 'POST', auth: owner, body: { name, data: 'data:' + type + ';base64,' + Buffer.from(bytes).toString('base64') } });
+  const samples = [
+    ['a.mp3', 'audio/mpeg', Buffer.concat([Buffer.from('ID3'), Buffer.alloc(40, 1)]), 'audio/mpeg'],
+    ['b.mp3', 'audio/mpeg', Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x64]), Buffer.alloc(40, 2)]), 'audio/mpeg'],
+    ['c.m4a', 'audio/x-m4a', Buffer.concat([Buffer.from([0, 0, 0, 32]), Buffer.from('ftypM4A '), Buffer.alloc(40)]), 'audio/mp4'],
+    ['d.ogg', 'audio/ogg', Buffer.concat([Buffer.from('OggS'), Buffer.alloc(40, 3)]), 'audio/ogg'],
+    ['e.wav', 'audio/wav', Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(40)]), 'audio/wav']
+  ];
+  for (const [name, type, bytes, served] of samples) {
+    const result = await upload(name, type, bytes);
+    assert.equal(result.status, 201, name + ': ' + result.text);
+    assert.equal(result.data.kind, 'audio');
+    const file = await f.request(result.data.url);
+    assert.equal(file.headers.get('content-type'), served, name);
+  }
+  assert.equal((await upload('fake.mp3', 'audio/mpeg', Buffer.from('<html>not audio</html>'))).status, 400);
+  assert.equal((await upload('fake.wav', 'audio/wav', Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('AVI ')]))).status, 400);
+});

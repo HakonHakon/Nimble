@@ -153,6 +153,11 @@ function nimble_v2_value(string $type, mixed $input, array $ctx): mixed
     if ($kind === 'cell') return nimble_v2_ints($input, 4, 1, $limits['gridLines']);
     if ($kind === 'color') return nimble_v2_color($input, $ctx);
     if ($kind === 'font') return is_string($input) && isset($ctx['fonts'][$input]) ? $input : null;
+    if ($kind === 'point') {
+        if (!nimble_v2_is_list($input) || count($input) !== 2) return null;
+        $point = array_map(static fn($item) => nimble_v2_value('num:0:100', $item, $ctx), $input);
+        return in_array(null, $point, true) ? null : $point;
+    }
     if ($kind === 'icon') return is_string($input) && array_key_exists($input, nimble_v2_spec()['icons']) ? $input : null;
     if ($kind === 'background') return nimble_v2_background($input, $ctx);
     if ($kind === 'border') return nimble_v2_border($input, $ctx);
@@ -339,6 +344,11 @@ function nimble_v2_rich_text(mixed $input, array $ctx): array
     }
     return $output;
 }
+function nimble_v2_audio_source(mixed $value): ?string
+{
+    $candidate = nimble_v2_safe_url($value);
+    return $candidate !== '' && preg_match('/\.(mp3|m4a|ogg|oga|wav)(?:[?#]|$)/i', $candidate) ? $candidate : null;
+}
 function nimble_v2_node_props(string $type, mixed $input, array $ctx): array
 {
     $spec = nimble_v2_spec();
@@ -353,6 +363,13 @@ function nimble_v2_node_props(string $type, mixed $input, array $ctx): array
         elseif (str_starts_with($kind, 'text:')) $result = nimble_v2_text($source, (int)substr($kind, 5), $key);
         elseif ($kind === 'media') { if ($source === '') continue; $result = nimble_v2_safe_url($source); if ($result === '') nimble_error('Use a valid HTTP(S) URL or local path for ' . $key . '.'); }
         elseif ($kind === 'video') { if ($source === '') continue; if (!nimble_v2_video_source($source)) nimble_error('Videos must be MP4/WebM files or YouTube/Vimeo URLs.'); $result = nimble_v2_safe_url($source); }
+        elseif ($kind === 'audio') { if ($source === '') continue; $result = nimble_v2_audio_source($source); if ($result === null) nimble_error('Audio must be an MP3, M4A, OGG or WAV file.'); }
+        elseif ($kind === 'textList') {
+            if (!nimble_v2_is_list($source) || count($source) > $spec['limits']['galleryImages']) nimble_error('Use no more than ' . $spec['limits']['galleryImages'] . ' captions.');
+            $result = array_map(static fn($item) => nimble_v2_text($item ?? '', 300, 'Caption'), $source);
+            while ($result && end($result) === '') array_pop($result);
+            if (!$result) continue;
+        }
         elseif ($kind === 'mediaList') {
             if (!nimble_v2_is_list($source) || count($source) > $spec['limits']['galleryImages']) nimble_error('Use no more than ' . $spec['limits']['galleryImages'] . ' gallery images.');
             $result = [];
@@ -517,7 +534,7 @@ function nimble_v2_normalize(array $input): array
     if (!nimble_v2_is_list($assetsIn) || count($assetsIn) > $limits['assets']) nimble_error('Use no more than ' . $limits['assets'] . ' media assets.');
     $assets = []; $assetIds = [];
     foreach ($assetsIn as $asset) {
-        if (!nimble_v2_is_object($asset) || !is_string($asset['id'] ?? null) || !nimble_v2_match('id', $asset['id']) || isset($assetIds[$asset['id']]) || !in_array($asset['kind'] ?? null, ['image', 'video'], true)) nimble_error('Each media asset needs a unique valid ID and media type.');
+        if (!nimble_v2_is_object($asset) || !is_string($asset['id'] ?? null) || !nimble_v2_match('id', $asset['id']) || isset($assetIds[$asset['id']]) || !in_array($asset['kind'] ?? null, ['image', 'video', 'audio'], true)) nimble_error('Each media asset needs a unique valid ID and media type.');
         $assetIds[$asset['id']] = true;
         $url = nimble_v2_safe_url(nimble_v2_text($asset['url'] ?? null, 3000, 'Media URL'));
         if ($url === '') nimble_error('Media assets need a valid URL.');

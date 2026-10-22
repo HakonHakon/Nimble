@@ -118,7 +118,7 @@ function remove(id) {
 }
 async function upload(kind) {
   const input = $('#fileInput');
-  input.accept = kind === 'video' ? 'video/mp4,video/webm' : 'image/*';
+  input.accept = kind === 'video' ? 'video/mp4,video/webm' : kind === 'audio' ? 'audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg,audio/wav,.mp3,.m4a,.ogg,.wav' : 'image/*';
   const file = await new Promise(resolve => { input.onchange = () => resolve(input.files[0]); input.click(); });
   input.value = '';
   if (!file || !editable()) return null;

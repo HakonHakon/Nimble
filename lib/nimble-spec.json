@@ -132,10 +132,11 @@
     "section": { "container": true, "root": true, "tags": ["section", "header", "footer", "div", "article", "aside", "nav"], "display": "grid" },
     "container": { "container": true, "tags": ["div", "article", "aside", "nav", "figure"], "display": "grid" },
     "text": { "display": "block", "props": { "doc": "richtext" } },
-    "image": { "display": "block", "props": { "src": "media", "alt": "text:1000", "fit": "enum:cover,contain,fill,none", "link": "link" } },
+    "image": { "display": "block", "props": { "src": "media", "alt": "text:1000", "fit": "enum:cover,contain,fill,none", "focal": "point", "link": "link" } },
     "button": { "display": "inline-flex", "props": { "label": "text:200", "link": "link", "icon": "icon", "iconPosition": "enum:start,end", "hideLabel": "bool" } },
     "video": { "display": "block", "props": { "src": "video", "poster": "media", "title": "text:200", "controls": "bool", "autoplay": "bool", "loop": "bool", "muted": "bool" } },
-    "gallery": { "display": "grid", "props": { "images": "mediaList", "alt": "text:1000", "minItemWidth": "length", "itemHeight": "length", "gap": "length" } },
+    "gallery": { "display": "grid", "props": { "images": "mediaList", "captions": "textList", "alt": "text:1000", "layout": "enum:grid,masonry,slider", "minItemWidth": "length", "itemHeight": "length", "gap": "length", "lightbox": "bool", "autoplay": "bool", "interval": "int:2:30" } },
+    "audio": { "display": "block", "props": { "src": "audio", "title": "text:200", "autoplay": "bool", "loop": "bool" } },
     "form": { "display": "block", "props": { "submitLabel": "text:120", "note": "text:500" } },
     "shape": { "display": "block", "props": { "shape": "enum:rect,ellipse,blob" } },
     "spacer": { "display": "block" },
@@ -188,7 +189,7 @@
     "textTransform": "enum:none,uppercase,lowercase,capitalize",
     "padding": "box",
     "linkUnderline": "bool",
-    "blendMode": "enum:normal,multiply,screen,overlay,darken,lighten,color-dodge,color-burn,difference,exclusion,luminosity",
+    "filter": "enum:none,grayscale,sepia,blur,brighten,darken,contrast,saturate,vintage", "blendMode": "enum:normal,multiply,screen,overlay,darken,lighten,color-dodge,color-burn,difference,exclusion,luminosity",
     "scrollEffect": "enum:none,parallax,reveal"
   },
   "textStyle": {

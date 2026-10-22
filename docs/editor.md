@@ -98,6 +98,12 @@ The **Add** panel includes layout presets:
   The drop target is outlined while you drag. Press Esc to cancel.
 - **Icons:** 47 built-in stroke icons. Each icon element has a picker, an accessible label, an optional link and a stroke width; its colour comes from the text colour. Buttons can show an icon before or after the label, or only the icon (the label stays for screen readers).
 - **Lines** can be horizontal or vertical, with their own thickness and line style.
+- **Galleries:**
+  - *Gallery* is a grid, *Masonry gallery* uses columns with natural image heights, and *Slideshow* is a slider with arrows and optional autoplay. Autoplay pauses while the pointer or keyboard focus is on it, and is off when the visitor prefers reduced motion.
+  - In the Content tab, add images from the library or upload them, give each a caption, and reorder or remove them. Clicking an image in the Media panel while a gallery is selected adds it to the gallery.
+  - *Open images full screen* turns on a lightbox with arrows and Esc.
+- **Audio player:** MP3, M4A, OGG or WAV files from the Media panel or the Upload button.
+- **Images:** a focal point (click the preview) keeps that spot visible when the image is cropped by *fit: cover*. The Design tab has filters: grayscale, sepia, blur, brighten, darken, contrast, saturate and vintage. Filters work on any element and can differ per breakpoint.
 - **SVG images** can be uploaded in the Media panel like other images. They are shown through `<img>` and served with a sandboxing Content-Security-Policy, so scripts inside an SVG never run.
 
 ## Text editing

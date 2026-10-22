@@ -46,11 +46,11 @@ export function createMediaPanel(root, ctx) {
   function render() {
     const { doc } = ctx.state();
     root.innerHTML = '<div class="panel-head"><h2 class="panel-title">Media</h2></div><p class="panel-subtitle">Click an image to use it in the selected image, or to add it to the page.</p>'
-      + '<div class="pair media-actions"><button class="btn btn-small" data-media-upload="image">Upload image</button><button class="btn btn-small" data-media-upload="video">Upload video</button></div>'
+      + '<div class="pair media-actions"><button class="btn btn-small" data-media-upload="image">Upload image</button><button class="btn btn-small" data-media-upload="video">Upload video</button><button class="btn btn-small" data-media-upload="audio">Upload audio</button></div>'
       + (doc.assets.length ? '<div class="asset-grid">' + doc.assets.map(asset => '<div class="asset" data-asset="' + esc(asset.id) + '"><button class="asset-use" data-use="' + esc(asset.id) + '" title="' + esc(asset.name) + '">'
-        + (asset.kind === 'image' ? '<img src="' + esc(asset.url) + '" alt="" loading="lazy">' : '<span class="asset-video">▶</span>') + '<span class="asset-name">' + esc(asset.name) + '</span></button>'
+        + (asset.kind === 'image' ? '<img src="' + esc(asset.url) + '" alt="" loading="lazy">' : '<span class="asset-video">' + (asset.kind === 'audio' ? '♪' : '▶') + '</span>') + '<span class="asset-name">' + esc(asset.name) + '</span></button>'
         + '<button class="asset-remove" data-remove-asset="' + esc(asset.id) + '" title="Remove from library" aria-label="Remove ' + esc(asset.name) + ' from library">×</button></div>').join('') + '</div>'
-        : '<p class="empty">No media yet. Uploaded images and videos appear here.</p>');
+        : '<p class="empty">No media yet. Uploaded images, videos and audio appear here.</p>');
     if (!ctx.editable()) root.querySelectorAll('button').forEach(button => { button.disabled = true; });
   }
   root.addEventListener('click', async event => {
@@ -64,8 +64,12 @@ export function createMediaPanel(root, ctx) {
     if (!use) return;
     const asset = doc.assets.find(item => item.id === use.dataset.use);
     const node = selected && doc.nodes[selected];
-    const kind = asset.kind === 'video' ? 'video' : 'image';
+    const kind = asset.kind === 'video' || asset.kind === 'audio' ? asset.kind : 'image';
     if (node && node.type === kind) return void ctx.commit([{ path: ['nodes', selected, 'props', 'src'], value: asset.url }], { label: 'Change ' + kind });
+    if (node && node.type === 'gallery' && kind === 'image') {
+      const props = node.props || {};
+      return void ctx.commit([{ path: ['nodes', selected, 'props', 'images'], value: [...(props.images || []), asset.url] }], { label: 'Add to gallery' });
+    }
     const { id, node: created } = createNode(doc, kind);
     created.props = { ...(created.props || {}), src: asset.url, ...(kind === 'image' ? { alt: '' } : {}) };
     const target = insertionTarget(doc, index, page, selected, kind);

@@ -92,7 +92,13 @@ test('PHP and Node reject the same invalid v2 documents', { skip }, async () => 
     mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', lineHeight: 9, c: [] }]; }),
     mutate(doc => { doc.nodes.title.props.doc = [{ t: 'ul', letterSpacing: 'wide', items: [] }]; }),
     mutate(doc => { doc.nodes.cta.props.icon = 'not-an-icon'; }),
-    mutate(doc => { doc.nodes.cta.props.iconPosition = 'middle'; })
+    mutate(doc => { doc.nodes.cta.props.iconPosition = 'middle'; }),
+    mutate(doc => { doc.nodes.cta.style.desktop.filter = 'neon'; }),
+    mutate(doc => { doc.nodes.copy.children.push('sound'); doc.nodes.sound = { type: 'audio', props: { src: '/uploads/song.mp4' } }; }),
+    mutate(doc => { doc.nodes.copy.children.push('pic'); doc.nodes.pic = { type: 'image', props: { focal: [50, 101] } }; }),
+    mutate(doc => { doc.nodes.copy.children.push('gal'); doc.nodes.gal = { type: 'gallery', props: { captions: 'x' } }; }),
+    mutate(doc => { doc.nodes.copy.children.push('gal'); doc.nodes.gal = { type: 'gallery', props: { layout: 'carousel' } }; }),
+    mutate(doc => { doc.assets.push({ id: 'snd', kind: 'podcast', name: 'x', url: '/uploads/a.mp3' }); })
   ];
   for (const [index, document] of cases.entries()) {
     const js = runJs(document), phpResult = runPhp(document);

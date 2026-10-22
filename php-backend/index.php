@@ -251,8 +251,13 @@ function media_extension(string $type, string $bytes): string
     if ($type === 'font/ttf' && (substr($bytes, 0, 4) === "\x00\x01\x00\x00" || substr($bytes, 0, 4) === 'true')) return 'ttf';
     if ($type === 'font/otf' && substr($bytes, 0, 4) === 'OTTO') return 'otf';
     // SVG files are served with a sandboxing CSP (see serve_upload) and shown through <img>, where scripts never run.
+    $audio = ['audio/mpeg' => 'mp3', 'audio/mp3' => 'mp3', 'audio/mp4' => 'm4a', 'audio/x-m4a' => 'm4a', 'audio/m4a' => 'm4a', 'audio/ogg' => 'ogg', 'audio/wav' => 'wav', 'audio/x-wav' => 'wav', 'audio/wave' => 'wav', 'audio/vnd.wave' => 'wav'][$type] ?? null;
+    if ($audio === 'mp3' && (substr($bytes, 0, 3) === 'ID3' || (strlen($bytes) > 1 && ord($bytes[0]) === 0xff && (ord($bytes[1]) & 0xe0) === 0xe0))) return 'mp3';
+    if ($audio === 'm4a' && substr($bytes, 4, 4) === 'ftyp') return 'm4a';
+    if ($audio === 'ogg' && substr($bytes, 0, 4) === 'OggS') return 'ogg';
+    if ($audio === 'wav' && substr($bytes, 0, 4) === 'RIFF' && substr($bytes, 8, 4) === 'WAVE') return 'wav';
     if ($type === 'image/svg+xml' && mb_check_encoding($bytes, 'UTF-8') && preg_match('/^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--.*?-->\s*)*(?:<!DOCTYPE\s+svg[^>]*>\s*)?(?:<!--.*?-->\s*)*<svg[\s>]/is', preg_replace('/^\xEF\xBB\xBF/', '', $bytes))) return 'svg';
-    nimble_error('The file contents do not match a supported image, video or font format.'); return '';
+    nimble_error('The file contents do not match a supported image, video, audio or font format.'); return '';
 }
 function media_size(): int
 {
@@ -260,10 +265,10 @@ function media_size(): int
 }
 function store_media(array $body): array
 {
-    $data = (string)($body['data'] ?? ''); if (!preg_match('#^data:(image/(?:png|jpeg|webp|gif|svg\+xml)|video/(?:mp4|webm)|font/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$#i', $data, $match)) nimble_error('Upload an image, video or font no larger than 15 MB.');
+    $data = (string)($body['data'] ?? ''); if (!preg_match('#^data:(image/(?:png|jpeg|webp|gif|svg\+xml)|video/(?:mp4|webm)|audio/(?:mpeg|mp3|mp4|x-m4a|m4a|ogg|wav|x-wav|wave|vnd\.wave)|font/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$#i', $data, $match)) nimble_error('Upload an image, video, audio file or font no larger than 15 MB.');
     $bytes = base64_decode($match[2], true); if ($bytes === false || strlen($bytes) > (int)cfg('max_media_bytes', 15728640) || media_size() + strlen($bytes) > (int)cfg('media_quota_bytes', 1073741824)) nimble_error('Invalid media encoding, file size, or storage quota.', 413);
     $extension = media_extension(strtolower($match[1]), $bytes);
-    $kind = str_starts_with(strtolower($match[1]), 'video') ? 'video' : (str_starts_with(strtolower($match[1]), 'font') ? 'font' : 'image');
+    $kind = explode('/', strtolower($match[1]))[0];
     return save_upload($bytes, $extension, substr((string)($body['name'] ?? 'Media'), 0, 200), $kind);
 }
 function save_upload(string $bytes, string $extension, string $name, string $kind): array
@@ -275,7 +280,7 @@ function save_upload(string $bytes, string $extension, string $name, string $kin
 }
 function serve_upload(string $path): never
 {
-    if (!preg_match('#^/uploads/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|woff2|woff|ttf|otf)$#', $path)) nimble_error('Not found.', 404);
+    if (!preg_match('#^/uploads/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|mp3|m4a|ogg|wav|woff2|woff|ttf|otf)$#', $path)) nimble_error('Not found.', 404);
     $file = cfg('storage_dir') . '/uploads/' . basename($path); if (!is_file($file)) nimble_error('Not found.', 404); $size = filesize($file); $start = 0; $end = $size - 1; $status = 200;
     header('Accept-Ranges: bytes');
     $range = (string)($_SERVER['HTTP_RANGE'] ?? '');
@@ -285,7 +290,7 @@ function serve_upload(string $path): never
         if ($start > $end || $start >= $size) { header('Content-Range: bytes */' . $size); nimble_error('Invalid media range.', 416); }
         $status = 206; header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
     }
-    $mime = ['png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp','gif'=>'image/gif','mp4'=>'video/mp4','webm'=>'video/webm','woff2'=>'font/woff2','woff'=>'font/woff','ttf'=>'font/ttf','otf'=>'font/otf','svg'=>'image/svg+xml'][strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+    $mime = ['png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp','gif'=>'image/gif','mp4'=>'video/mp4','webm'=>'video/webm','woff2'=>'font/woff2','woff'=>'font/woff','ttf'=>'font/ttf','otf'=>'font/otf','svg'=>'image/svg+xml','mp3'=>'audio/mpeg','m4a'=>'audio/mp4','ogg'=>'audio/ogg','wav'=>'audio/wav'][strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
     if ($mime === 'image/svg+xml') header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
     http_response_code($status); header('Content-Type: ' . $mime); header('Content-Length: ' . max(0, $end - $start + 1)); header('Cache-Control: public, max-age=31536000, immutable');
     if (request_method() === 'HEAD' || $size === 0) exit;
