@@ -8,11 +8,12 @@ import { layoutBox, rotationOf, gridGeometry, isGrid } from './geometry.mjs';
 const EDITOR_CSS = 'html,body{min-height:100%}iframe,video{pointer-events:none}a,button,summary{cursor:default}body{-webkit-user-select:none;user-select:none}'
   + '.t-section:empty,.t-container:empty{min-height:72px;outline:1px dashed #c8c5d7;outline-offset:-1px}'
   + '.t-image:empty{min-height:120px;background:repeating-linear-gradient(45deg,#f1f0f6 0 10px,#e7e5f0 10px 20px)}'
-  + '.t-text:empty{min-height:1.4em}';
+  + '.t-text:empty{min-height:1.4em}'
+  + '[contenteditable=true]{-webkit-user-select:text;user-select:text;cursor:text;outline:none}[contenteditable=true] *{-webkit-user-select:text;user-select:text}[contenteditable=true] a{cursor:text}';
 
-export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, getColumnHandles = () => false, onScroll, onContextMenu = () => {} }) {
+export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, getColumnHandles = () => false, onScroll, onContextMenu = () => {}, onDoubleClick = () => {} }) {
   let currentScale = 1, doc = null, page = null, hoverId = null, selectedId = null, others = [], ready = null, scheduled = false;
-  let gesture = null, gridlines = false, guides = { x: [], y: [] };
+  let gesture = null, gridlines = false, guides = { x: [], y: [] }, editingId = null;
   const year = new Date().getFullYear(), cssCache = createCssCache();
   const frameDoc = () => frame.contentDocument;
   const element = id => id ? frameDoc()?.getElementById(id) : null;
@@ -36,6 +37,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
         d.addEventListener('pointerdown', event => { if (event.button === 0) onPointerDown(event, target(event)?.id || null); }, true);
         d.addEventListener('click', event => event.preventDefault(), true);
         d.addEventListener('contextmenu', event => { event.preventDefault(); onContextMenu(event, target(event)?.id || null); });
+        d.addEventListener('dblclick', event => onDoubleClick(event, target(event)?.id || null));
         d.addEventListener('submit', event => event.preventDefault(), true);
         d.addEventListener('dragstart', event => event.preventDefault(), true);
         d.addEventListener('keydown', event => onKey(event));
@@ -73,7 +75,8 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
       for (let parent = element(id)?.parentElement?.closest('.n'); parent; parent = parent.parentElement?.closest('.n')) if (ids.has(parent.id)) skip.add(id);
     }
     for (const id of roots) {
-      if (skip.has(id)) continue;
+      // The text being edited inline keeps its editable DOM; the editor re-renders it when done.
+      if (skip.has(id) || id === editingId) continue;
       const current = element(id);
       if (!current) return renderAll();
       current.outerHTML = renderNode(doc, id, page, options());
@@ -214,6 +217,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     element,
     setGesture(next) { gesture = next; schedule(); },
     setGridlines(on) { gridlines = on; schedule(); },
+    setEditing(id) { editingId = id; schedule(); },
     setGuides(next) { guides = next; schedule(); },
     redraw: schedule
   };

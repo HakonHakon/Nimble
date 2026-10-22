@@ -22,7 +22,11 @@
         "tablet": { "background": { "kind": "image", "src": "/uploads/still.jpg", "focal": [30, 75.5], "overlay": "#00000040" }, "scrollEffect": "reveal" },
         "mobile": { "background": { "kind": "video", "src": "/uploads/small.webm" }, "scrollEffect": "none" }
       } },
-    "title": { "type": "text", "props": { "doc": [ { "t": "h1", "c": [ { "text": "Hover me" } ] } ] }, "hover": { "color": "@brand", "duration": 400 }, "style": { "desktop": { "blendMode": "difference" } } },
+    "title": { "type": "text", "props": { "doc": [
+      { "t": "h1", "c": [ { "text": "Hover me" } ] },
+      { "t": "p", "style": "p2", "align": "center", "lineHeight": 1.75, "letterSpacing": "0.02em", "c": [ { "text": "Big ", "size": "28px", "weight": 300 }, { "text": "brand", "font": "display", "color": "@brand", "highlight": "#ffee0080", "b": true }, { "text": " text" } ] },
+      { "t": "ul", "lineHeight": 2, "items": [ [ { "text": "One", "highlight": "@brand" } ], [ { "text": "Two", "size": "1.2em" } ] ] }
+    ] }, "hover": { "color": "@brand", "duration": 400 }, "style": { "desktop": { "blendMode": "difference" } } },
     "cta": { "type": "button", "props": { "label": "Go" }, "hover": { "background": { "kind": "gradient", "angle": 90, "stops": [ { "color": "@brand", "at": 0 }, { "color": "#ff00aa", "at": 100 } ] }, "borderColor": "#000", "shadow": [ { "y": "8px", "blur": "24px", "color": "#00000040" } ], "opacity": 0.9, "scale": 1.05, "translateY": "-2px" }, "place": { "desktop": { "rotate": 3 } } },
     "plain": { "type": "section", "hover": { "duration": 0 } }
   }

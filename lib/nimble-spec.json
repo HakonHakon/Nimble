@@ -76,6 +76,8 @@
     "p3": { "desktop": { "font": "body", "fontSize": "12px", "fontWeight": 400, "lineHeight": 1.5, "color": "@muted" } }
   },
   "richBlockTags": ["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol"],
+  "richRun": { "font": "font", "size": "length", "weight": "int:100:900", "highlight": "color" },
+  "richBlock": { "lineHeight": "num:0.5:4", "letterSpacing": "slength" },
   "richDefaultStyle": { "p": "p1", "h1": "h1", "h2": "h2", "h3": "h3", "h4": "h4", "h5": "h5", "h6": "h6", "ul": "p1", "ol": "p1" },
   "nodeTypes": {
     "section": { "container": true, "root": true, "tags": ["section", "header", "footer", "div", "article", "aside", "nav"], "display": "grid" },

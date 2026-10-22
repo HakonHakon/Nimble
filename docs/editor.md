@@ -86,6 +86,21 @@ The **Add** panel includes layout presets:
   - **Copy design / Paste design** copies only the Design values.
 - **Moving a section.** Drag its name tag above the selection box. Dragging inside a section draws a selection rectangle.
 
+## Text editing
+
+- **Start editing.** Double-click a text on the canvas, press Enter while it is selected, or click *Edit on canvas* in the Content tab. While you type, the resize handles are hidden. Changes save while you type; a burst of typing is one undo step.
+- **Toolbar:**
+  - **Text style:** Heading 1–6 or Paragraph 1–3, which sets the look and the matching tag. You can also choose a bulleted or numbered list.
+  - **HTML tag:** P or H1–H6. Changing it does not change the look, so a heading can look like Paragraph 2 and still be an H2 for search engines.
+  - **Font, size and weight** for the selected characters.
+  - Bold, italic, underline and strikethrough (Ctrl+B / I / U).
+  - Text colour and highlight, with the colour picker.
+  - Alignment, line height and letter spacing for the selected paragraphs.
+  - **Link** (Ctrl+K): page, section, web address, email, phone or file, optionally opening in a new tab. With the caret inside a link, you edit that link; *Remove link* removes it.
+  - **Clear formatting:** removes character and paragraph formatting but keeps links.
+- **Paste.** Pasted content keeps paragraphs, headings, lists, bold, italic, underline, strikethrough and http(s), mailto and tel links. Everything else is dropped: scripts, event handlers, styles, images and other links.
+- **Stop editing.** Press Esc, click *Done*, or click anywhere else.
+
 ## Design tab
 
 - **Colours.** Every colour field has a swatch that opens the picker:

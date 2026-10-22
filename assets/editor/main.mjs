@@ -12,13 +12,14 @@ import { createRulers } from './rulers.mjs';
 import { createArranger } from './arrange.mjs';
 import { createMenu, shortcutSheet } from './menu.mjs';
 import { createMediaPanel, createSitePanel, createTemplates } from './site-panels.mjs';
+import { createRichEditor } from './rich-editor.mjs';
 import { createBreakpointManager, breakpointForWidth, rangeOf, MIN_WIDTH, MAX_WIDTH } from './breakpoints.mjs';
 import { shield } from './transform.mjs';
 import { indexTree, ancestors, descendants, listOf, label } from './tree.mjs';
 
 const $ = selector => document.querySelector(selector);
 const app = { store: null, user: null, role: 'viewer', csrf: '', revision: 0, loaded: false, locked: false, dirty: false, pageId: 'home', bp: 'desktop', selected: null, selection: [], previewWidth: null, tool: 'layers', converted: false };
-let saveTimer = null, saving = null, cachedIndex = null, cachedFor = null, transformer = null, rulers = null, arranger = null, menu = null;
+let saveTimer = null, saving = null, cachedIndex = null, cachedFor = null, transformer = null, rulers = null, arranger = null, menu = null, rich = null;
 const prefs = (() => { try { return { snap: true, rulers: true, grid: false, ...JSON.parse(localStorage.getItem('nimble-editor-prefs') || '{}') }; } catch { return { snap: true, rulers: true, grid: false }; } })();
 const savePrefs = () => { try { localStorage.setItem('nimble-editor-prefs', JSON.stringify(prefs)); } catch {} };
 
@@ -86,6 +87,7 @@ function commit(ops, options) {
 // The selection is a list of element ids; `selected` is the primary one (last clicked) that the
 // inspector and handles act on. Parents and children are never selected together.
 function applySelection(ids, primary, { source = 'api', reveal = source !== 'canvas' } = {}) {
+  if (rich?.editing && (ids.length !== 1 || ids[0] !== rich.editing)) rich.stop();
   const valid = ids.filter((id, i) => doc().nodes[id] && ids.indexOf(id) === i);
   const chosen = valid.filter(id => !valid.some(other => other !== id && ancestors(index(), id).includes(other)));
   app.selection = chosen;
@@ -134,6 +136,8 @@ async function upload(kind) {
 const ctx = {
   state: () => ({ doc: doc(), page: page(), pageIndex: doc().pages.indexOf(page()), bp: app.bp, bpIds: bpIds(), selected: app.selected, selection: app.selection, index: index() }),
   commit, select, selectMany, remove, upload, editable, toast,
+  store: () => app.store,
+  editText: id => rich.start(id),
   arrange: action => arranger.run(action),
   canArrange: action => arranger.available(action),
   api: (url, options) => api(url, options),
@@ -146,15 +150,20 @@ const ctx = {
   showLayout: () => inspector.setTab('layout'),
   snapping: () => prefs.snap,
   guides: () => rulers ? rulers.guides : { x: [], y: [] },
-  openPage(id) { app.pageId = id; app.selected = null; app.selection = []; canvas.select(null); canvas.render(doc(), page()); renderPanels(); renderChrome(); rulers.load(); }
+  openPage(id) { rich?.stop(); app.pageId = id; app.selected = null; app.selection = []; canvas.select(null); canvas.render(doc(), page()); renderPanels(); renderChrome(); rulers.load(); }
 };
 
 const canvas = createCanvas({
   frame: $('#canvasFrame'), overlay: $('#canvasOverlay'),
-  onPointerDown: (event, id) => transformer.pointerDown(event, id),
+  onPointerDown: (event, id) => {
+    if (rich?.owns(event)) return; // clicks inside the text being edited place the caret
+    if (rich?.editing) rich.stop();
+    transformer.pointerDown(event, id);
+  },
+  onDoubleClick: (event, id) => { if (id && doc().nodes[id]?.type === 'text' && rich.editing !== id) { select(id, { source: 'canvas' }); rich.start(id, { x: event.clientX, y: event.clientY }); } },
   onHandleDown: (event, handle) => transformer.handleDown(event, handle),
   onGuideDown: (event, axis, position) => rulers.beginGuideDrag(event, axis, position),
-  getHandles: id => transformer ? transformer.handles(id) : [],
+  getHandles: id => transformer && rich?.editing !== id ? transformer.handles(id) : [],
   getColumnHandles: id => transformer ? transformer.columnHandles(id) : false,
   onScroll: () => rulers?.draw(),
   onHover: id => { document.querySelectorAll('.layer-row.hovered').forEach(row => row.classList.remove('hovered')); if (id) document.querySelector('.layer-row[data-id="' + CSS.escape(id) + '"]')?.classList.add('hovered'); },
@@ -166,6 +175,7 @@ const canvas = createCanvas({
   }
 });
 transformer = createTransformer(canvas, ctx);
+rich = createRichEditor(canvas, ctx);
 arranger = createArranger(canvas, transformer, ctx);
 menu = createMenu(arranger);
 rulers = createRulers({ area: $('.canvas-area'), canvas, key: () => 'nimble-guides-' + (app.store ? page().id : 'home') + '-' + app.bp });
@@ -203,6 +213,7 @@ function renderChrome() {
   document.querySelectorAll('.tool-panel').forEach(panel => { panel.hidden = panel.dataset.panel !== app.tool; });
 }
 function switchBreakpoint(id, { keepWidth = false } = {}) {
+  rich?.stop();
   app.bp = bpIds().includes(id) ? id : 'desktop';
   if (!keepWidth) app.previewWidth = null;
   renderChrome(); inspector.render(); layers.render(); rulers.load();
@@ -246,6 +257,9 @@ function keyboard(event) {
   const mod = event.ctrlKey || event.metaKey;
   if (mod && event.key.toLowerCase() === 's') { event.preventDefault(); flushSave().catch(() => {}); return; }
   if (typing) return;
+  // Enter starts typing in the selected text, only when nothing else has focus (buttons, Layers rows).
+  const onCanvas = event.target === document.body || event.target === document.documentElement || event.target.ownerDocument !== document;
+  if (event.key === 'Enter' && !mod && !event.defaultPrevented && onCanvas && app.selection.length === 1 && doc().nodes[app.selected]?.type === 'text' && editable()) { event.preventDefault(); rich.start(app.selected); return; }
   if (mod && event.key.toLowerCase() === 'z') { event.preventDefault(); if (editable()) event.shiftKey ? app.store.redo() : app.store.undo(); return; }
   if (mod && event.key.toLowerCase() === 'y') { event.preventDefault(); if (editable()) app.store.redo(); return; }
   if ((event.key === 'Delete' || event.key === 'Backspace') && app.selected) { event.preventDefault(); arranger.run('delete'); return; }
@@ -330,7 +344,7 @@ function onChange({ ids, reason }) {
   if (app.selected && !doc().nodes[app.selected]) app.selected = app.selection[app.selection.length - 1] || null;
   if (!doc().pages.some(item => item.id === app.pageId)) app.pageId = 'home';
   if (!bpIds().includes(app.bp)) { app.bp = 'desktop'; app.previewWidth = null; }
-  canvas.render(doc(), page(), ids);
+  canvas.render(doc(), page(), ids).then(() => rich?.refresh());
   canvas.select(app.selected, { also: app.selection });
   renderPanels(); renderChrome();
   if (reason !== 'replace') markDirty();

@@ -234,6 +234,24 @@ function nimble_v2_link_attributes(array $site, array $link): string
 {
     return ' href="' . nimble_v2_e(nimble_v2_link_href($site, $link)) . '"' . (!empty($link['newTab']) ? ' target="_blank" rel="noopener noreferrer"' : '');
 }
+// Inline styles of a rich text run (colour first, so colour-only runs keep their v1 markup).
+function nimble_v2_run_css(array $run): string
+{
+    return implode(';', array_filter([
+        isset($run['color']) ? 'color:' . nimble_v2_color_value($run['color']) : null,
+        isset($run['highlight']) ? 'background-color:' . nimble_v2_color_value($run['highlight']) : null,
+        isset($run['font']) ? 'font-family:var(--f-' . $run['font'] . ')' : null,
+        isset($run['size']) ? 'font-size:' . $run['size'] : null,
+        isset($run['weight']) ? 'font-weight:' . $run['weight'] : null,
+    ], static fn($part) => $part !== null));
+}
+function nimble_v2_block_css(array $block): string
+{
+    return implode(';', array_filter([
+        isset($block['lineHeight']) ? 'line-height:' . nimble_v2_num_string($block['lineHeight']) : null,
+        isset($block['letterSpacing']) ? 'letter-spacing:' . $block['letterSpacing'] : null,
+    ], static fn($part) => $part !== null));
+}
 function nimble_v2_runs_html(array $site, array $runs, array $options): string
 {
     $html = '';
@@ -244,7 +262,8 @@ function nimble_v2_runs_html(array $site, array $runs, array $options): string
         if (!empty($run['i'])) $part = '<em>' . $part . '</em>';
         if (!empty($run['u'])) $part = '<u>' . $part . '</u>';
         if (!empty($run['s'])) $part = '<s>' . $part . '</s>';
-        if (isset($run['color'])) $part = '<span style="color:' . nimble_v2_e(nimble_v2_color_value($run['color'])) . '">' . $part . '</span>';
+        $css = nimble_v2_run_css($run);
+        if ($css !== '') $part = '<span style="' . nimble_v2_e($css) . '">' . $part . '</span>';
         if (isset($run['link'])) $part = '<a' . nimble_v2_link_attributes($site, $run['link']) . '>' . $part . '</a>';
         $html .= $part;
     }
@@ -255,11 +274,13 @@ function nimble_v2_rich_html(array $site, array $doc, array $options): string
     $spec = nimble_v2_spec(); $html = '';
     foreach ($doc as $block) {
         $className = 'ts-' . ($block['style'] ?? $spec['richDefaultStyle'][$block['t']]) . (isset($block['align']) ? ' ta-' . $block['align'] : '');
+        $css = nimble_v2_block_css($block);
+        $open = '<' . $block['t'] . ' class="' . $className . '"' . ($css !== '' ? ' style="' . nimble_v2_e($css) . '"' : '') . '>';
         if (isset($block['items'])) {
-            $html .= '<' . $block['t'] . ' class="' . $className . '">';
+            $html .= $open;
             foreach ($block['items'] as $item) $html .= '<li>' . nimble_v2_runs_html($site, $item, $options) . '</li>';
             $html .= '</' . $block['t'] . '>';
-        } else $html .= '<' . $block['t'] . ' class="' . $className . '">' . nimble_v2_runs_html($site, $block['c'], $options) . '</' . $block['t'] . '>';
+        } else $html .= $open . nimble_v2_runs_html($site, $block['c'], $options) . '</' . $block['t'] . '>';
     }
     return $html;
 }

@@ -245,9 +245,9 @@ export function createInspector(root, ctx) {
       const plain = !block.items && isPlain(runs);
       const tag = block.items ? '<span class="tag">' + block.t + '</span>' : '<select data-block="' + i + '" data-part="tag" aria-label="Block type">' + RICH_TAGS.map(option => '<option' + (option === block.t ? ' selected' : '') + '>' + option + '</option>').join('') + '</select>';
       const text = plain ? '<textarea data-block="' + i + '" data-part="text" rows="' + (block.t === 'p' ? 3 : 2) + '" aria-label="Block ' + (i + 1) + ' text">' + esc(runs.map(run => run.text).join('')) + '</textarea>'
-        : '<p class="formatted">' + esc(runs.map(run => run.token ? '{' + run.token + '}' : run.text).join('')) + '</p><p class="hint">Formatted text — edit it with the on-canvas text editor (Phase 7).</p>';
+        : '<p class="formatted">' + esc(runs.map(run => run.token ? '{' + run.token + '}' : run.text).join('')) + '</p><p class="hint">Formatted text: edit it on the canvas.</p>';
       return '<div class="rich-block"><div class="pair">' + tag + '<button class="link-button" data-block="' + i + '" data-part="remove" aria-label="Remove block ' + (i + 1) + '">Remove</button></div>' + text + '</div>';
-    }).join('') + '<button class="btn btn-small" data-part="add-block">+ Paragraph</button></div>';
+    }).join('') + '<div class="pair"><button class="btn btn-small" data-part="add-block">+ Paragraph</button><button class="btn btn-small btn-primary" data-edit-text>Edit on canvas</button></div><p class="hint">Double-click text on the canvas (or press Enter) to type and format it there.</p></div>';
   }
 
   function render() {
@@ -378,6 +378,7 @@ export function createInspector(root, ctx) {
     if (event.target.closest('[data-part=clear]') && field) { event.target.dataset.clicked = '1'; return commitField(field); }
     if (event.target.closest('[data-part=remove],[data-part=add-block]')) return commitRich(event.target.closest('[data-part]'));
     if (event.target.closest('[data-delete]')) return ctx.remove(ctx.state().selected);
+    if (event.target.closest('[data-edit-text]')) return void ctx.editText(ctx.state().selected);
     const upload = event.target.closest('[data-upload]');
     if (upload && field) {
       ctx.upload(upload.dataset.upload).then(url => {

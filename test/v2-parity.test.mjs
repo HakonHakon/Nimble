@@ -84,7 +84,13 @@ test('PHP and Node reject the same invalid v2 documents', { skip }, async () => 
     mutate(doc => { doc.design.fonts.push({ id: 'bad', source: 'custom', family: 'Bad', files: [] }); }),
     mutate(doc => { doc.design.fonts.push({ id: 'bad', source: 'custom', family: 'Bad', files: [{ src: '/uploads/a.woff2', weight: 950 }] }); }),
     mutate(doc => { doc.design.presets = [{ id: 'x', name: 'X', type: 'nope' }]; }),
-    mutate(doc => { doc.design.presets = [{ id: 'x', name: ' ', type: 'button' }]; })
+    mutate(doc => { doc.design.presets = [{ id: 'x', name: ' ', type: 'button' }]; }),
+    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', c: [{ text: 'x', font: 'missing' }] }]; }),
+    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', c: [{ text: 'x', size: '12pt' }] }]; }),
+    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', c: [{ text: 'x', weight: 950 }] }]; }),
+    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', c: [{ text: 'x', highlight: 'red' }] }]; }),
+    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'p', lineHeight: 9, c: [] }]; }),
+    mutate(doc => { doc.nodes.title.props.doc = [{ t: 'ul', letterSpacing: 'wide', items: [] }]; })
   ];
   for (const [index, document] of cases.entries()) {
     const js = runJs(document), phpResult = runPhp(document);

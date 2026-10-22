@@ -292,6 +292,12 @@ function nimble_v2_runs(mixed $input, array $ctx, array &$budget): array
         if ($budget['chars'] < 0) nimble_error('Rich text must be at most ' . $limits['textChars'] . ' characters.');
         foreach (['b', 'i', 'u', 's'] as $mark) if (($run[$mark] ?? null) === true) $item[$mark] = true;
         if (array_key_exists('color', $run) && $run['color'] !== null) { $c = nimble_v2_color($run['color'], $ctx); if ($c === null) nimble_error('Invalid rich text colour.'); $item['color'] = $c; }
+        foreach (nimble_v2_spec()['richRun'] as $key => $type) {
+            if (!array_key_exists($key, $run) || $run[$key] === null) continue;
+            $v = nimble_v2_value($type, $run[$key], $ctx);
+            if ($v === null) nimble_error('Invalid rich text ' . $key . '.');
+            $item[$key] = $v;
+        }
         if (array_key_exists('link', $run) && $run['link'] !== null) { $l = nimble_v2_link($run['link'], $ctx); if ($l !== null) $item['link'] = $l; }
         if (in_array($run['token'] ?? null, ['year', 'siteName'], true)) { $item['token'] = $run['token']; $item['text'] = ''; }
         $output[] = $item;
@@ -315,6 +321,12 @@ function nimble_v2_rich_text(mixed $input, array $ctx): array
         if (array_key_exists('align', $block) && $block['align'] !== null) {
             if (!in_array($block['align'], ['left', 'center', 'right', 'justify'], true)) nimble_error('Invalid text alignment.');
             $item['align'] = $block['align'];
+        }
+        foreach ($spec['richBlock'] as $key => $type) {
+            if (!array_key_exists($key, $block) || $block[$key] === null) continue;
+            $v = nimble_v2_value($type, $block[$key], $ctx);
+            if ($v === null) nimble_error('Invalid rich text ' . $key . '.');
+            $item[$key] = $v;
         }
         if ($block['t'] === 'ul' || $block['t'] === 'ol') {
             $items = $block['items'] ?? null;

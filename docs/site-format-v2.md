@@ -40,7 +40,18 @@ v2 replaces the fixed block list with an element tree whose layout, placement an
 
   `heading` and `body` always exist. Each `@font-face` is declared once, even when several ids share a family.
 - **Saved designs.** `design.presets` is a list of `{ id, name, type, style? }` (up to 50). `style` is a normal breakpoint style map. Applying one copies it to the element.
-- **Rich text.** `props.doc` is a list of blocks (`p`, `h1`–`h6`, `ul`, `ol`) made of runs with `b/i/u/s`, `color`, `link`, or a `token` (`year`, `siteName`).
+- **Rich text.** `props.doc` is a list of blocks (`p`, `h1`–`h6`, `ul`, `ol`).
+  - **Blocks** can have:
+    - `style`, a text style key; it sets the look independently of the HTML tag
+    - `align`
+    - `lineHeight`
+    - `letterSpacing`
+  - **Runs** carry:
+    - `b`, `i`, `u`, `s`
+    - `color` and `highlight`
+    - `font` (a font id), `size` and `weight`
+    - `link`, or a `token` (`year`, `siteName`)
+  - Run formatting renders as one `<span style>` per run, and block spacing as a `style` attribute. Both are built from validated values only.
 - **Links** are structured: `page` (+ optional anchor), `anchor`, `url`, `asset`, `email`, `phone`, plus `newTab`. Links to deleted pages or elements are dropped.
 - **Security.** No raw CSS or HTML is accepted. Every value is checked against the spec types before it reaches the CSS or HTML output.
 
