@@ -34,3 +34,6 @@ img,video{max-width:100%}
 .skip{position:absolute;top:-100px;left:10px;padding:10px;background:#fff;z-index:10}
 .skip:focus{top:10px}
 :focus-visible{outline:3px solid #b7aaff;outline-offset:3px}
+.bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;pointer-events:none;display:none}
+.bg-overlay{position:absolute;inset:0;z-index:-1;pointer-events:none}
+@media (prefers-reduced-motion:reduce){.bg-video{display:none!important}[data-fx]{background-attachment:scroll!important}}

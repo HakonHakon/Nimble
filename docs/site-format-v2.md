@@ -16,20 +16,34 @@ v2 replaces the fixed block list with an element tree whose layout, placement an
 ## Shape
 
 ```text
-{ version: 2, site, design: { colors, fonts, textStyles, body }, breakpoints, assets,
+{ version: 2, site, design: { colors, fonts, textStyles, body, presets? }, breakpoints, assets,
   header?, footer?, pages: [{ id, name, path, children, title?, description?, showHeader, showFooter }],
-  nodes: { <id>: { id, type, name?, tag?, props?, children?, layout?, place?, style?, hidden?, locked? } } }
+  nodes: { <id>: { id, type, name?, tag?, props?, children?, layout?, place?, style?, hover?, hidden?, locked? } } }
 ```
 
 - **Tree.** Pages, `header` and `footer` contain sections only. Sections and containers hold other elements. Every element appears once. Unreachable elements are dropped on save. The depth limit is 12.
 - **Breakpoints.** Desktop is the base. `breakpoints` are ordered widest first (default tablet ≤1000 px, mobile ≤750 px; up to 5). `layout`, `place`, `style`, `hidden` and each text style are maps keyed by breakpoint id. They hold only the overrides, which cascade desktop → tablet → mobile.
 - **Layout (containers).** `mode: grid | stack`, tracks (`1fr`, `240px`, `auto`, `minmax(a,b)`, `repeat(auto-fit,minmax(a,1fr))`), gaps, `padding`, `minHeight`, and `contentWidth` (keeps content centred while the background stays full width).
 - **Placement (children).** For grid children: `cell` = [row, column, rowSpan, columnSpan], plus `justifySelf`/`alignSelf`. Freeform positioning puts several children in the same cell and offsets them with `margin`. For stack children: `alignSelf` and `order`. Shared: width/height/min/max, `rotate`, `z`.
-- **Style.** `color`, `background` (colour/gradient/image with overlay), `opacity`, `border` (per side), `radius`, `shadow`, typography, `padding`, `linkUnderline`. Colours are hex or `@paletteKey`. Fonts are referenced by id.
+- **Style.** `color`, `background`, `opacity`, `border` (per side), `radius` (per corner: top-left, top-right, bottom-right, bottom-left), `shadow` (up to 4, optionally `inset`), typography, `padding`, `linkUnderline`, `blendMode` (CSS `mix-blend-mode` values), `scrollEffect` (`none`, `parallax`, `reveal`). Colours are hex (`#rrggbb` or `#rrggbbaa`), `transparent` or `@paletteKey`. Fonts are referenced by id.
+- **Backgrounds.**
+  - `color`
+  - `gradient`: `linear` or `radial`, an angle, and 2–8 stops of `{ color, at }`
+  - `image`: `src`, `size`, `position` or a `focal` point `[x%, y%]` (which wins), an optional `overlay` colour
+  - `video`: sections and containers only. `src` must be an MP4 or WebM file; optional `poster` and `overlay`. It renders as a muted, looping `<video>` behind the content, and is hidden when the visitor prefers reduced motion.
+- **Hover.** `hover` is one map for all breakpoints: `color`, `background` (no video), `borderColor`, `shadow`, `opacity`, `scale` (0.5–2), `translateY`, and `duration` (ms, default 200). It renders as `:hover` rules plus a `transition` on the changed properties.
+- **Scroll effects.** `parallax` moves the background image at a slower speed; the runtime is in `assets/public.js`. `reveal` fixes the background so content scrolls over it. Both are turned off when the visitor prefers reduced motion. Elements with an effect carry a `data-fx` attribute.
+- **Fonts.**
+  - `{ id, source: 'system', family: sans | serif | mono }`
+  - `{ id, source: 'custom', family, src }` for one uploaded file (WOFF2, WOFF, TTF or OTF)
+  - `{ id, source: 'custom', family, files: [{ src, weight, style }] }` for self-hosted Google fonts (up to 12 files)
+
+  `heading` and `body` always exist. Each `@font-face` is declared once, even when several ids share a family.
+- **Saved designs.** `design.presets` is a list of `{ id, name, type, style? }` (up to 50). `style` is a normal breakpoint style map. Applying one copies it to the element.
 - **Rich text.** `props.doc` is a list of blocks (`p`, `h1`–`h6`, `ul`, `ol`) made of runs with `b/i/u/s`, `color`, `link`, or a `token` (`year`, `siteName`).
 - **Links** are structured: `page` (+ optional anchor), `anchor`, `url`, `asset`, `email`, `phone`, plus `newTab`. Links to deleted pages or elements are dropped.
 - **Security.** No raw CSS or HTML is accepted. Every value is checked against the spec types before it reaches the CSS or HTML output.
 
 ## Not in v2 yet
 
-Google Fonts (planned as self-hosted fonts in P6), hover states, animations, form field builder, and the remaining element types from P8. Add each one to `nimble-spec.json` and to both implementations, then add a parity fixture.
+Entrance animations, the form field builder, and the remaining element types from P8. Add each one to `nimble-spec.json` and to both implementations, then add a parity fixture.

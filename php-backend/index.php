@@ -5,6 +5,7 @@ require_once __DIR__ . '/lib/site-model.php';
 require_once __DIR__ . '/lib/render.php';
 require_once __DIR__ . '/lib/site-model-v2.php';
 require_once __DIR__ . '/lib/render-v2.php';
+require_once __DIR__ . '/lib/fonts.php';
 
 $configFile = __DIR__ . '/config.php';
 if (!is_file($configFile)) {
@@ -245,7 +246,11 @@ function media_extension(string $type, string $bytes): string
     if ($type === 'image/webp' && substr($bytes, 0, 4) === 'RIFF' && substr($bytes, 8, 4) === 'WEBP') return 'webp';
     if ($type === 'video/mp4' && substr($bytes, 4, 4) === 'ftyp') return 'mp4';
     if ($type === 'video/webm' && substr($bytes, 0, 4) === "\x1a\x45\xdf\xa3") return 'webm';
-    nimble_error('The file contents do not match a supported image or video format.'); return '';
+    if ($type === 'font/woff2' && substr($bytes, 0, 4) === 'wOF2') return 'woff2';
+    if ($type === 'font/woff' && substr($bytes, 0, 4) === 'wOFF') return 'woff';
+    if ($type === 'font/ttf' && (substr($bytes, 0, 4) === "\x00\x01\x00\x00" || substr($bytes, 0, 4) === 'true')) return 'ttf';
+    if ($type === 'font/otf' && substr($bytes, 0, 4) === 'OTTO') return 'otf';
+    nimble_error('The file contents do not match a supported image, video or font format.'); return '';
 }
 function media_size(): int
 {
@@ -253,15 +258,22 @@ function media_size(): int
 }
 function store_media(array $body): array
 {
-    $data = (string)($body['data'] ?? ''); if (!preg_match('#^data:(image/(?:png|jpeg|webp|gif)|video/(?:mp4|webm));base64,([a-z0-9+/]+={0,2})$#i', $data, $match)) nimble_error('Upload an image or video no larger than 15 MB.');
+    $data = (string)($body['data'] ?? ''); if (!preg_match('#^data:(image/(?:png|jpeg|webp|gif)|video/(?:mp4|webm)|font/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$#i', $data, $match)) nimble_error('Upload an image, video or font no larger than 15 MB.');
     $bytes = base64_decode($match[2], true); if ($bytes === false || strlen($bytes) > (int)cfg('max_media_bytes', 15728640) || media_size() + strlen($bytes) > (int)cfg('media_quota_bytes', 1073741824)) nimble_error('Invalid media encoding, file size, or storage quota.', 413);
-    $extension = media_extension(strtolower($match[1]), $bytes); $filename = bin2hex(random_bytes(16)) . '.' . $extension; $path = cfg('storage_dir') . '/uploads/' . $filename;
+    $extension = media_extension(strtolower($match[1]), $bytes);
+    $kind = str_starts_with(strtolower($match[1]), 'video') ? 'video' : (str_starts_with(strtolower($match[1]), 'font') ? 'font' : 'image');
+    return save_upload($bytes, $extension, substr((string)($body['name'] ?? 'Media'), 0, 200), $kind);
+}
+function save_upload(string $bytes, string $extension, string $name, string $kind): array
+{
+    if (media_size() + strlen($bytes) > (int)cfg('media_quota_bytes', 1073741824)) nimble_error('Your media storage is full. Contact the site administrator.', 413);
+    $filename = bin2hex(random_bytes(16)) . '.' . $extension; $path = cfg('storage_dir') . '/uploads/' . $filename;
     if (file_put_contents($path, $bytes, LOCK_EX) === false) throw new RuntimeException('Could not store the upload.');
-    return ['url' => '/uploads/' . $filename, 'name' => substr((string)($body['name'] ?? 'Media'), 0, 200), 'kind' => str_starts_with(strtolower($match[1]), 'video') ? 'video' : 'image'];
+    return ['url' => '/uploads/' . $filename, 'name' => $name, 'kind' => $kind];
 }
 function serve_upload(string $path): never
 {
-    if (!preg_match('#^/uploads/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm)$#', $path)) nimble_error('Not found.', 404);
+    if (!preg_match('#^/uploads/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm|woff2|woff|ttf|otf)$#', $path)) nimble_error('Not found.', 404);
     $file = cfg('storage_dir') . '/uploads/' . basename($path); if (!is_file($file)) nimble_error('Not found.', 404); $size = filesize($file); $start = 0; $end = $size - 1; $status = 200;
     header('Accept-Ranges: bytes');
     $range = (string)($_SERVER['HTTP_RANGE'] ?? '');
@@ -271,7 +283,7 @@ function serve_upload(string $path): never
         if ($start > $end || $start >= $size) { header('Content-Range: bytes */' . $size); nimble_error('Invalid media range.', 416); }
         $status = 206; header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
     }
-    $mime = ['png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp','gif'=>'image/gif','mp4'=>'video/mp4','webm'=>'video/webm'][strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+    $mime = ['png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp','gif'=>'image/gif','mp4'=>'video/mp4','webm'=>'video/webm','woff2'=>'font/woff2','woff'=>'font/woff','ttf'=>'font/ttf','otf'=>'font/otf'][strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
     http_response_code($status); header('Content-Type: ' . $mime); header('Content-Length: ' . max(0, $end - $start + 1)); header('Cache-Control: public, max-age=31536000, immutable');
     if (request_method() === 'HEAD' || $size === 0) exit;
     $handle = fopen($file, 'rb'); fseek($handle, $start); $remaining = $end - $start + 1; while ($remaining > 0 && !feof($handle)) { $chunk = fread($handle, min(1048576, $remaining)); if ($chunk === false) break; echo $chunk; $remaining -= strlen($chunk); } fclose($handle); exit;
@@ -336,6 +348,7 @@ try {
         });
         json_response(200, ['template' => template_public($row)]);
     }
+    if ($path === '/api/fonts/google' && $method === 'POST') { $auth = require_access('edit', true); rate_limit('fonts:' . $auth['user']['id'], 30, 3600); $result = nimble_import_google_font(request_body(10000), static fn(string $bytes, string $extension, string $name): array => save_upload($bytes, $extension, $name, 'font')); audit((int)$auth['user']['id'], 'font_imported', ['family' => $result['family'], 'files' => count($result['files'])]); json_response(201, $result); }
     if ($path === '/api/media' && $method === 'POST') { $auth = require_access('edit', true); $result = store_media(request_body(22000000)); audit((int)$auth['user']['id'], 'media_uploaded', ['url' => $result['url']]); json_response(201, $result); }
     if ($path === '/api/publish' && $method === 'POST') {
         $auth = require_access('publish', true); $body = request_body(10000); $row = db_transaction(function () use ($body): array { $row = site_row(true); if (!$row) nimble_error('Owner setup is incomplete.', 503); if ((int)($body['revision'] ?? 0) !== (int)$row['revision']) nimble_error('Save and load the latest draft before publishing.', 409); db()->prepare("UPDATE sites SET published_json=document_json,published_revision=revision,published_at=? WHERE id='nimble'")->execute([timestamp()]); return site_row() ?? $row; }); audit((int)$auth['user']['id'], 'site_published', ['revision' => (int)$row['revision']]); json_response(200, ['ok' => true, 'url' => cfg('public_url') . '/']);

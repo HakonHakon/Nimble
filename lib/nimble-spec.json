@@ -17,7 +17,9 @@
     "shadows": 4,
     "gradientStops": 8,
     "tracks": 24,
-    "gridLines": 48
+    "gridLines": 48,
+    "presets": 50,
+    "fontFiles": 12
   },
   "patterns": {
     "id": "^[a-z][a-z0-9_-]{0,79}$",
@@ -133,7 +135,9 @@
     "textAlign": "enum:left,center,right,justify",
     "textTransform": "enum:none,uppercase,lowercase,capitalize",
     "padding": "box",
-    "linkUnderline": "bool"
+    "linkUnderline": "bool",
+    "blendMode": "enum:normal,multiply,screen,overlay,darken,lighten,color-dodge,color-burn,difference,exclusion,luminosity",
+    "scrollEffect": "enum:none,parallax,reveal"
   },
   "textStyle": {
     "font": "font",
@@ -143,6 +147,16 @@
     "letterSpacing": "slength",
     "color": "color",
     "textTransform": "enum:none,uppercase,lowercase,capitalize"
+  },
+  "hover": {
+    "color": "color",
+    "background": "background",
+    "borderColor": "color",
+    "shadow": "shadows",
+    "opacity": "num:0:1",
+    "scale": "num:0.5:2",
+    "translateY": "slength",
+    "duration": "int:0:3000"
   },
   "typographyProps": ["color", "font", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "textAlign", "textTransform"]
 }

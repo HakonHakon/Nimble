@@ -31,9 +31,28 @@ function nimble_v2_background_css(array $value): string
         $stops = implode(',', array_map(static fn($stop) => nimble_v2_color_value($stop['color']) . ' ' . nimble_v2_num_string($stop['at']) . '%', $value['stops']));
         return $value['type'] === 'radial' ? 'radial-gradient(circle,' . $stops . ')' : 'linear-gradient(' . nimble_v2_num_string($value['angle']) . 'deg,' . $stops . ')';
     }
+    if ($value['kind'] === 'video') return isset($value['color']) ? nimble_v2_color_value($value['color']) : 'transparent';
     $overlay = isset($value['overlay']) ? 'linear-gradient(' . nimble_v2_color_value($value['overlay']) . ',' . nimble_v2_color_value($value['overlay']) . '),' : '';
-    return $overlay . 'url("' . $value['src'] . '") ' . preg_replace('/-/', ' ', $value['position'], 1) . '/' . $value['size'] . ' ' . ($value['repeat'] ? 'repeat' : 'no-repeat') . (isset($value['color']) ? ' ' . nimble_v2_color_value($value['color']) : '');
+    $position = isset($value['focal']) ? nimble_v2_num_string($value['focal'][0]) . '% ' . nimble_v2_num_string($value['focal'][1]) . '%' : preg_replace('/-/', ' ', $value['position'], 1);
+    return $overlay . 'url("' . $value['src'] . '") ' . $position . '/' . $value['size'] . ' ' . ($value['repeat'] ? 'repeat' : 'no-repeat') . (isset($value['color']) ? ' ' . nimble_v2_color_value($value['color']) : '');
 }
+function nimble_v2_shadow_text(array $list): string
+{
+    return $list ? implode(',', array_map(static fn($item) => (!empty($item['inset']) ? 'inset ' : '') . $item['x'] . ' ' . $item['y'] . ' ' . $item['blur'] . ' ' . $item['spread'] . ' ' . nimble_v2_color_value($item['color']), $list)) : 'none';
+}
+function nimble_v2_video_backgrounds(array $node): array
+{
+    $list = [];
+    foreach ($node['style'] ?? [] as $values) {
+        $value = $values['background'] ?? null;
+        if (($value['kind'] ?? null) !== 'video') continue;
+        $known = false;
+        foreach ($list as $item) if ($item['src'] === $value['src']) $known = true;
+        if (!$known) $list[] = ['src' => $value['src'], 'poster' => $value['poster'] ?? null];
+    }
+    return $list;
+}
+const NIMBLE_V2_HOVER_PROPERTIES = ['color', 'background', 'border-color', 'box-shadow', 'opacity', 'scale', 'translate'];
 function nimble_v2_typography(array &$rules, string $selector, array $style): void
 {
     if (isset($style['color'])) $rules[$selector]['color'] = nimble_v2_color_value($style['color']);
@@ -110,7 +129,30 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
     if (isset($style['opacity'])) $rules[$selector]['opacity'] = nimble_v2_num_string($style['opacity']);
     if (isset($style['border'])) foreach (NIMBLE_V2_SIDES as $side) $rules[$selector]['border-' . $side] = in_array($side, $style['border']['sides'], true) ? $style['border']['width'] . ' ' . $style['border']['style'] . ' ' . nimble_v2_color_value($style['border']['color']) : 'none';
     if (isset($style['radius'])) $rules[$selector]['border-radius'] = implode(' ', $style['radius']);
-    if (isset($style['shadow'])) $rules[$selector]['box-shadow'] = $style['shadow'] ? implode(',', array_map(static fn($item) => (!empty($item['inset']) ? 'inset ' : '') . $item['x'] . ' ' . $item['y'] . ' ' . $item['blur'] . ' ' . $item['spread'] . ' ' . nimble_v2_color_value($item['color']), $style['shadow'])) : 'none';
+    if (isset($style['shadow'])) $rules[$selector]['box-shadow'] = nimble_v2_shadow_text($style['shadow']);
+    $videos = nimble_v2_video_backgrounds($node);
+    if ($videos) {
+        $active = ($style['background']['kind'] ?? null) === 'video' ? $style['background'] : null;
+        $rules[$selector]['isolation'] = 'isolate';
+        foreach ($videos as $i => $item) $rules[$selector . '>.bg-v' . $i]['display'] = ($active['src'] ?? null) === $item['src'] ? 'block' : 'none';
+        $rules[$selector . '>.bg-overlay']['background'] = isset($active['overlay']) ? nimble_v2_color_value($active['overlay']) : 'transparent';
+    }
+    if (isset($style['blendMode'])) $rules[$selector]['mix-blend-mode'] = $style['blendMode'];
+    if (isset($style['scrollEffect'])) {
+        $rules[$selector]['--fx'] = $style['scrollEffect'];
+        $rules[$selector]['background-attachment'] = $style['scrollEffect'] === 'reveal' ? 'fixed' : 'scroll';
+    }
+    if (isset($node['hover'])) {
+        $hover = $node['hover']; $on = $selector . ':hover'; $duration = $hover['duration'] ?? 200;
+        $rules[$selector]['transition'] = implode(',', array_map(static fn($property) => $property . ' ' . $duration . 'ms ease', NIMBLE_V2_HOVER_PROPERTIES));
+        if (isset($hover['color'])) $rules[$node['type'] === 'text' ? $selector . '.t-text:hover,' . $selector . '.t-text:hover>*' : $on]['color'] = nimble_v2_color_value($hover['color']);
+        if (isset($hover['background'])) $rules[$on]['background'] = nimble_v2_background_css($hover['background']);
+        if (isset($hover['borderColor'])) $rules[$on]['border-color'] = nimble_v2_color_value($hover['borderColor']);
+        if (isset($hover['shadow'])) $rules[$on]['box-shadow'] = nimble_v2_shadow_text($hover['shadow']);
+        if (isset($hover['opacity'])) $rules[$on]['opacity'] = nimble_v2_num_string($hover['opacity']);
+        if (isset($hover['scale'])) $rules[$on]['scale'] = nimble_v2_num_string($hover['scale']);
+        if (isset($hover['translateY'])) $rules[$on]['translate'] = '0 ' . $hover['translateY'];
+    }
     if (isset($style['linkUnderline'])) $rules[$selector . ' a']['text-decoration'] = $style['linkUnderline'] ? 'underline' : 'none';
     if (isset($style['padding']) && !$container) $rules[$selector]['padding'] = implode(' ', $style['padding']);
 }
@@ -156,7 +198,14 @@ function nimble_v2_site_css(array $site, array $roots): string
     $css = ':root{' . implode(';', $vars);
     foreach ($site['design']['fonts'] as $font) $css .= ';--f-' . $font['id'] . ':' . ($font['source'] === 'system' ? $spec['systemFonts'][$font['family']] : '"' . $font['family'] . '",system-ui,sans-serif');
     $css .= '}';
-    foreach ($site['design']['fonts'] as $font) if ($font['source'] === 'custom') $css .= '@font-face{font-family:"' . $font['family'] . '";src:url("' . $font['src'] . '");font-display:swap}';
+    // Several font IDs can share one family (e.g. "heading" copied from an imported font); each face is declared once.
+    $faces = [];
+    foreach ($site['design']['fonts'] as $font) {
+        if ($font['source'] !== 'custom') continue;
+        if (isset($font['src'])) $faces['@font-face{font-family:"' . $font['family'] . '";src:url("' . $font['src'] . '");font-display:swap}'] = true;
+        foreach ($font['files'] ?? [] as $file) $faces['@font-face{font-family:"' . $font['family'] . '";src:url("' . $file['src'] . '");font-weight:' . $file['weight'] . ';font-style:' . $file['style'] . ';font-display:swap}'] = true;
+    }
+    $css .= implode('', array_keys($faces));
     $body = $site['design']['body'] ?? [];
     $bodyRules = array_values(array_filter([isset($body['font']) ? 'font-family:var(--f-' . $body['font'] . ')' : '', isset($body['color']) ? 'color:' . nimble_v2_color_value($body['color']) : '', isset($body['background']) ? 'background:' . nimble_v2_color_value($body['background']) : '']));
     $css .= 'body{' . implode(';', $bodyRules) . '}';
@@ -218,10 +267,15 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
 {
     $spec = nimble_v2_spec();
     $node = $site['nodes'][$id]; $props = $node['props'] ?? []; $definition = $spec['nodeTypes'][$node['type']];
-    $attributes = ' id="' . nimble_v2_e($node['id']) . '" class="n n-' . nimble_v2_e($node['id']) . ' t-' . $node['type'] . '"';
+    $effect = false;
+    foreach ($node['style'] ?? [] as $values) if (isset($values['scrollEffect']) && $values['scrollEffect'] !== 'none') $effect = true;
+    $attributes = ' id="' . nimble_v2_e($node['id']) . '" class="n n-' . nimble_v2_e($node['id']) . ' t-' . $node['type'] . '"' . ($effect ? ' data-fx' : '');
     if (!empty($definition['container'])) {
         $tag = $node['tag'] ?? ($node['type'] === 'section' ? 'section' : 'div');
         $inner = '';
+        $videos = nimble_v2_video_backgrounds($node);
+        foreach ($videos as $i => $item) $inner .= '<video class="bg-video bg-v' . $i . '" src="' . nimble_v2_e($item['src']) . '"' . ($item['poster'] !== null ? ' poster="' . nimble_v2_e($item['poster']) . '"' : '') . ' autoplay muted loop playsinline preload="metadata" aria-hidden="true"></video>';
+        if ($videos) $inner .= '<span class="bg-overlay" aria-hidden="true"></span>';
         foreach ($node['children'] as $child) $inner .= nimble_v2_render_node($site, $child, $page, $options);
         return '<' . $tag . $attributes . '>' . $inner . '</' . $tag . '>';
     }

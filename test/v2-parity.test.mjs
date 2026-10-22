@@ -74,7 +74,17 @@ test('PHP and Node reject the same invalid v2 documents', { skip }, async () => 
     mutate(doc => { doc.nodes.blob.tag = 'script'; }),
     mutate(doc => { doc.nodes.cta.place.desktop.rotate = 400; }),
     mutate(doc => { doc.nodes.cta.place.desktop.z = 1.5; }),
-    mutate(doc => { delete doc.nodes.hdr; })
+    mutate(doc => { delete doc.nodes.hdr; }),
+    mutate(doc => { doc.nodes.cta.style = { desktop: { background: { kind: 'video', src: '/uploads/clip.mp4' } } }; }),
+    mutate(doc => { doc.nodes.hero.style.desktop.background = { kind: 'video', src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }; }),
+    mutate(doc => { doc.nodes.cta.hover = { scale: 3 }; }),
+    mutate(doc => { doc.nodes.cta.hover = { background: { kind: 'video', src: '/uploads/clip.mp4' } }; }),
+    mutate(doc => { doc.nodes.hero.style.desktop.scrollEffect = 'zoom'; }),
+    mutate(doc => { doc.nodes.hero.style.desktop.background = { kind: 'image', src: '/uploads/a.jpg', focal: [10, 120] }; }),
+    mutate(doc => { doc.design.fonts.push({ id: 'bad', source: 'custom', family: 'Bad', files: [] }); }),
+    mutate(doc => { doc.design.fonts.push({ id: 'bad', source: 'custom', family: 'Bad', files: [{ src: '/uploads/a.woff2', weight: 950 }] }); }),
+    mutate(doc => { doc.design.presets = [{ id: 'x', name: 'X', type: 'nope' }]; }),
+    mutate(doc => { doc.design.presets = [{ id: 'x', name: ' ', type: 'button' }]; })
   ];
   for (const [index, document] of cases.entries()) {
     const js = runJs(document), phpResult = runPhp(document);

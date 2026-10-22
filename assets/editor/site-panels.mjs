@@ -2,7 +2,11 @@
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { normalizeSite, makeDefaultSite } from '/assets/site-model.mjs';
 import { migrateV1 } from '/assets/migrate-v1.mjs';
-import { createNode, insertionTarget } from './tree.mjs';
+import { createNode, insertionTarget, TYPES } from './tree.mjs';
+import { spec } from '/assets/site-model-v2.mjs';
+import { GOOGLE_FONTS } from '/assets/fonts.mjs';
+import { colorField, createColorPicker } from './color-picker.mjs';
+import { cascade } from './inspector.mjs';
 
 const TOP_KEYS = ['site', 'design', 'breakpoints', 'assets', 'header', 'footer', 'pages', 'nodes'];
 const BUILT_IN = [
@@ -11,6 +15,22 @@ const BUILT_IN = [
   { name: 'Minimal', description: 'A calm, focused layout for a clear message.', theme: 'mint', title: 'Good things, made clear.' }
 ];
 const FONT_NAMES = { sans: 'Modern sans', serif: 'Classic serif', mono: 'Monospace' };
+const STYLE_NAMES = { h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', h4: 'Heading 4', h5: 'Heading 5', h6: 'Heading 6', p1: 'Paragraph 1', p2: 'Paragraph 2', p3: 'Paragraph 3' };
+const STYLE_LABELS = { font: 'Font', fontSize: 'Size', fontWeight: 'Weight', lineHeight: 'Line height', letterSpacing: 'Letter spacing', color: 'Colour', textTransform: 'Text case' };
+const FONT_TYPES = { woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf' };
+// A font ID for a family name: lowercase letters, digits and dashes, unique among the site's fonts.
+export function fontId(family, fonts) {
+  const base = ('f-' + family.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).slice(0, 28).replace(/-+$/, '');
+  let id = base, n = 2;
+  while (fonts.some(font => font.id === id)) id = base + '-' + n++;
+  return id;
+}
+// True when a font ID is referenced anywhere in the design or the elements.
+export function fontInUse(doc, id) {
+  if (id === 'heading' || id === 'body') return true;
+  const needle = '"font":"' + id + '"';
+  return [doc.nodes, doc.design.textStyles, doc.design.body, doc.design.presets].some(part => JSON.stringify(part || {}).includes(needle));
+}
 
 // Replaces the whole document as one undoable step.
 export function replaceOps(doc, next) {
@@ -58,15 +78,40 @@ export function createMediaPanel(root, ctx) {
 }
 
 export function createSitePanel(root, ctx) {
-  let addingColor = false;
+  let addingColor = false, styleKey = 'h1', busy = false;
+  const picker = createColorPicker({ colors: () => ctx.state().doc.design.colors });
+  picker.attach(root);
+  const fontLabel = font => font.source === 'system' ? FONT_NAMES[font.family] : font.family + (font.files ? ' (self-hosted)' : ' (uploaded)');
+  function fontSelect(design, id) {
+    const font = design.fonts.find(item => item.id === id);
+    const others = design.fonts.filter(item => item.source === 'custom' && item.id !== 'heading' && item.id !== 'body');
+    return '<label>' + (id === 'heading' ? 'Headings' : 'Body text') + '<select data-font="' + id + '">' + Object.entries(FONT_NAMES).map(([key, name]) => '<option value="system:' + key + '"' + (font?.source === 'system' && font.family === key ? ' selected' : '') + '>' + name + '</option>').join('')
+      + (font?.source === 'custom' ? '<option selected value="">' + esc(fontLabel(font)) + '</option>' : '')
+      + others.filter(item => item.family !== font?.family).map(item => '<option value="font:' + esc(item.id) + '">' + esc(fontLabel(item)) + '</option>').join('') + '</select></label>';
+  }
+  function textStyleEditor(doc, bp, bpIds) {
+    const styles = doc.design.textStyles[styleKey];
+    const bpName = bp === 'desktop' ? 'Desktop' : doc.breakpoints.find(item => item.id === bp)?.name || bp;
+    const fields = Object.entries(spec.textStyle).map(([key, type]) => {
+      const own = styles?.[bp]?.[key];
+      const inherited = bp === 'desktop' ? undefined : cascade(styles, bpIds, bpIds[bpIds.indexOf(bp) - 1], key);
+      const [kind, ...args] = type.split(':');
+      let control;
+      if (kind === 'font') control = '<select data-ts-value><option value="">' + (inherited ? 'Inherit (' + esc(inherited) + ')' : 'Default') + '</option>' + doc.design.fonts.map(font => '<option value="' + esc(font.id) + '"' + (own === font.id ? ' selected' : '') + '>' + esc(font.id + ' — ' + fontLabel(font)) + '</option>').join('') + '</select>';
+      else if (kind === 'enum') control = '<select data-ts-value><option value="">' + (inherited ? 'Inherit (' + esc(inherited) + ')' : 'Default') + '</option>' + args[0].split(',').map(option => '<option' + (own === option ? ' selected' : '') + '>' + option + '</option>').join('') + '</select>';
+      else if (kind === 'color') control = colorField(doc.design.colors, own, inherited || '', ' data-ts-value');
+      else if (kind === 'int' || kind === 'num') control = '<input data-ts-value type="number" min="' + args[0] + '" max="' + args[1] + '" step="' + (kind === 'int' ? 100 : 0.05) + '" value="' + esc(own ?? '') + '" placeholder="' + esc(inherited ?? '') + '">';
+      else control = '<input data-ts-value value="' + esc(own ?? '') + '" placeholder="' + esc(inherited ?? '') + '" spellcheck="false">';
+      return '<div class="field ts-field' + (own !== undefined ? ' has-own' : '') + '" data-ts-key="' + key + '" data-type="' + esc(type) + '"><div class="field-head"><label>' + STYLE_LABELS[key] + '</label>'
+        + (own !== undefined && bp !== 'desktop' ? '<button class="reset" data-ts-reset aria-label="Reset ' + STYLE_LABELS[key] + '">×</button>' : '') + '</div>' + control + '</div>';
+    }).join('');
+    return '<h3>Text styles</h3><label>Style<select data-ts-key-select>' + spec.textStyleKeys.map(key => '<option value="' + key + '"' + (key === styleKey ? ' selected' : '') + '>' + STYLE_NAMES[key] + '</option>').join('') + '</select></label>'
+      + '<p class="hint">Editing on <strong>' + esc(bpName) + '</strong>' + (bp === 'desktop' ? '. Smaller breakpoints inherit these values.' : '. Values override the larger breakpoints; empty fields inherit.') + ' Every text that uses ' + STYLE_NAMES[styleKey] + ' updates.</p>' + fields;
+  }
   function render() {
-    const { doc } = ctx.state(), site = doc.site, design = doc.design;
+    const { doc, bp, bpIds } = ctx.state(), site = doc.site, design = doc.design;
     const field = (key, title, value, extra = '') => '<label>' + title + '<input data-site="' + key + '" value="' + esc(value) + '"' + extra + '></label>';
-    const fontSelect = id => {
-      const font = design.fonts.find(item => item.id === id);
-      return '<label>' + (id === 'heading' ? 'Headings' : 'Body text') + '<select data-font="' + id + '">' + Object.entries(FONT_NAMES).map(([key, name]) => '<option value="' + key + '"' + (font?.source === 'system' && font.family === key ? ' selected' : '') + '>' + name + '</option>').join('')
-        + (font?.source === 'custom' ? '<option selected value="">' + esc(font.family) + ' (uploaded)</option>' : '') + '</select></label>';
-    };
+    const custom = design.fonts.filter(font => font.id !== 'heading' && font.id !== 'body');
     root.innerHTML = '<div class="panel-head"><h2 class="panel-title">Site</h2></div><div class="page-settings">'
       + '<h3>Settings</h3>' + field('name', 'Website name', site.name, ' maxlength="120"')
       + '<label>Description<textarea data-site="description" rows="3" maxlength="2000">' + esc(site.description) + '</textarea></label>'
@@ -77,12 +122,51 @@ export function createSitePanel(root, ctx) {
         + (['bg', 'ink', 'muted', 'line', 'accent', 'soft'].includes(key) ? '' : '<button class="icon-btn" data-remove-color="' + esc(key) + '" aria-label="Remove colour ' + esc(key) + '">−</button>') + '</label>').join('') + '</div>'
       + (addingColor ? '<form class="add-color"><input name="key" placeholder="name, e.g. brand" pattern="[a-z][a-z0-9-]{0,31}" required aria-label="Colour name"><input type="color" name="hex" value="#3366ff" aria-label="Colour"><button class="btn btn-small">Add</button></form>' : '<button class="btn btn-small" data-add-color>+ Colour</button>')
       + '<p class="hint">Elements that use a theme colour (shown as @name) update everywhere when you change it.</p>'
-      + '<h3>Fonts</h3>' + fontSelect('heading') + fontSelect('body') + '</div>';
+      + '<h3>Fonts</h3>' + fontSelect(design, 'heading') + fontSelect(design, 'body')
+      + (custom.length ? '<ul class="font-list">' + custom.map(font => '<li><span style="font-family:' + esc(font.source === 'system' ? spec.systemFonts[font.family] : '"' + font.family + '",system-ui') + '">' + esc(fontLabel(font)) + '</span><code>' + esc(font.id) + '</code>'
+        + '<button class="icon-btn" data-remove-font="' + esc(font.id) + '" aria-label="Remove font ' + esc(font.family) + '">−</button></li>').join('') + '</ul>' : '')
+      + '<form class="google-font"><label>Add a Google font<input name="family" list="googleFonts" placeholder="e.g. Playfair Display" maxlength="60" required spellcheck="false"></label>'
+      + '<datalist id="googleFonts">' + GOOGLE_FONTS.map(name => '<option value="' + esc(name) + '">').join('') + '</datalist>'
+      + '<fieldset class="weights"><legend>Weights</legend>' + [300, 400, 500, 600, 700, 800].map(weight => '<label class="check"><input type="checkbox" name="weight" value="' + weight + '"' + (weight === 400 || weight === 700 ? ' checked' : '') + '>' + weight + '</label>').join('') + '<label class="check"><input type="checkbox" name="italic">Italic</label></fieldset>'
+      + '<button class="btn btn-small"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Importing…' : 'Import font') + '</button></form>'
+      + '<p class="hint">Google fonts are downloaded once and served from your site, so visitors never connect to Google.</p>'
+      + '<button class="btn btn-small" data-upload-font' + (busy ? ' disabled' : '') + '>Upload font file…</button>'
+      + textStyleEditor(doc, bp, bpIds)
+      + '<h3>Saved designs</h3>' + ((design.presets || []).length ? '<ul class="preset-list">' + design.presets.map(preset => '<li><span>' + esc(preset.name) + '</span><small>' + esc(TYPES[preset.type]?.label || preset.type) + '</small><button class="icon-btn" data-remove-preset="' + esc(preset.id) + '" aria-label="Remove saved design ' + esc(preset.name) + '">−</button></li>').join('') + '</ul>' : '<p class="empty">Save an element’s design from its Design tab to reuse it.</p>')
+      + '</div>';
     if (!ctx.editable()) root.querySelectorAll('input,textarea,select,button').forEach(element => { element.disabled = true; });
+  }
+  async function addFont(font, label) {
+    const fonts = ctx.state().doc.design.fonts;
+    if (fonts.length >= spec.limits.fonts) { ctx.toast('A site can use up to ' + spec.limits.fonts + ' fonts.'); return; }
+    const existing = fonts.find(item => item.source === 'custom' && item.family === font.family && item.id !== 'heading' && item.id !== 'body');
+    const id = existing?.id || fontId(font.family, fonts);
+    const next = existing ? fonts.map(item => item.id === id ? { id, ...font } : item) : [...fonts, { id, ...font }];
+    if (ctx.commit([{ path: ['design', 'fonts'], value: next }], { label })) ctx.toast(font.family + ' is ready. Choose it for headings, body text or a text style.');
+  }
+  async function uploadFont() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.woff2,.woff,.ttf,.otf';
+    const file = await new Promise(resolve => { input.onchange = () => resolve(input.files[0]); input.click(); });
+    if (!file) return;
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (!FONT_TYPES[extension]) return ctx.toast('Choose a WOFF2, WOFF, TTF or OTF font file.');
+    if (file.size > 5 * 1024 * 1024) return ctx.toast('Choose a font file smaller than 5 MB.');
+    busy = true; render();
+    try {
+      // Browsers often report an empty or generic type for fonts, so build the data URL with the right one.
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      const asset = await ctx.api('/api/media', { method: 'POST', body: JSON.stringify({ name: file.name, data: 'data:' + FONT_TYPES[extension] + ';base64,' + btoa(binary) }) });
+      const family = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Custom font';
+      await addFont({ source: 'custom', family, src: asset.url }, 'Upload font');
+    } catch (error) { ctx.toast(error.message); }
+    finally { busy = false; render(); }
   }
   root.addEventListener('change', event => {
     if (!ctx.editable()) return;
-    const t = event.target, { doc } = ctx.state();
+    const t = event.target, { doc, bp } = ctx.state();
     if (t.dataset.site) {
       const value = t.type === 'checkbox' ? t.checked : t.value.trim();
       if (t.dataset.site === 'name' && !value) return render();
@@ -90,23 +174,60 @@ export function createSitePanel(root, ctx) {
     }
     if (t.dataset.color) return void ctx.commit([{ path: ['design', 'colors', t.dataset.color], value: t.value }], { label: 'Colour ' + t.dataset.color, merge: 'color:' + t.dataset.color });
     if (t.dataset.font && t.value) {
-      const fonts = doc.design.fonts.map(font => font.id === t.dataset.font ? { id: font.id, source: 'system', family: t.value } : font);
+      const [kind, value] = t.value.split(':');
+      const source = kind === 'system' ? { source: 'system', family: value } : (({ id, ...rest }) => rest)(doc.design.fonts.find(font => font.id === value));
+      const fonts = doc.design.fonts.map(font => font.id === t.dataset.font ? { id: font.id, ...source } : font);
       return void ctx.commit([{ path: ['design', 'fonts'], value: fonts }], { label: 'Font' });
+    }
+    if (t.matches('[data-ts-key-select]')) { styleKey = t.value; return render(); }
+    const tsField = t.closest('[data-ts-key]');
+    if (tsField) {
+      const key = tsField.dataset.tsKey, [kind] = tsField.dataset.type.split(':');
+      const raw = t.value.trim();
+      let value = raw === '' ? undefined : kind === 'int' || kind === 'num' ? Number(raw) : (kind === 'length' || kind === 'slength') && /^-?\d+(\.\d+)?$/.test(raw) ? raw + 'px' : raw;
+      if (bp === 'desktop' && value === undefined) return render(); // desktop values are the base and cannot be emptied
+      return void ctx.commit([{ path: ['design', 'textStyles', styleKey, bp, key], value }], { label: STYLE_NAMES[styleKey] + ' ' + STYLE_LABELS[key].toLowerCase() });
     }
   });
   root.addEventListener('click', event => {
     if (!ctx.editable()) return;
     if (event.target.closest('[data-add-color]')) { addingColor = true; render(); root.querySelector('.add-color input')?.focus(); return; }
+    const { doc, bp } = ctx.state();
     const remove = event.target.closest('[data-remove-color]');
     if (remove) {
-      const used = JSON.stringify(ctx.state().doc.nodes).includes('"@' + remove.dataset.removeColor + '"') || JSON.stringify(ctx.state().doc.design.textStyles).includes('"@' + remove.dataset.removeColor + '"');
+      const used = JSON.stringify(doc.nodes).includes('"@' + remove.dataset.removeColor + '"') || JSON.stringify(doc.design.textStyles).includes('"@' + remove.dataset.removeColor + '"');
       if (used) return ctx.toast('This colour is still used on the site.');
       ctx.commit([{ path: ['design', 'colors', remove.dataset.removeColor], value: undefined }], { label: 'Remove colour' });
+      return;
+    }
+    const removeFont = event.target.closest('[data-remove-font]');
+    if (removeFont) {
+      if (fontInUse(doc, removeFont.dataset.removeFont)) return ctx.toast('This font is still used. Change the text styles or elements that use it first.');
+      return void ctx.commit([{ path: ['design', 'fonts'], value: doc.design.fonts.filter(font => font.id !== removeFont.dataset.removeFont) }], { label: 'Remove font' });
+    }
+    if (event.target.closest('[data-upload-font]')) return void uploadFont();
+    const resetTs = event.target.closest('[data-ts-reset]');
+    if (resetTs) return void ctx.commit([{ path: ['design', 'textStyles', styleKey, bp, resetTs.closest('[data-ts-key]').dataset.tsKey], value: undefined }], { label: 'Reset ' + STYLE_NAMES[styleKey] });
+    const removePreset = event.target.closest('[data-remove-preset]');
+    if (removePreset) {
+      const presets = doc.design.presets.filter(preset => preset.id !== removePreset.dataset.removePreset);
+      ctx.commit([{ path: ['design', 'presets'], value: presets.length ? presets : undefined }], { label: 'Remove saved design' });
     }
   });
-  root.addEventListener('submit', event => {
+  root.addEventListener('submit', async event => {
     event.preventDefault();
-    const form = event.target, key = form.elements.key.value.trim();
+    const form = event.target;
+    if (form.matches('.google-font')) {
+      const body = JSON.stringify({ family: form.elements.family.value.trim(), weights: [...form.querySelectorAll('[name=weight]:checked')].map(input => Number(input.value)), italic: form.elements.italic.checked });
+      busy = true; render();
+      try {
+        const result = await ctx.api('/api/fonts/google', { method: 'POST', body });
+        await addFont({ source: 'custom', family: result.family, files: result.files }, 'Add font ' + result.family);
+      } catch (error) { ctx.toast(error.message); }
+      finally { busy = false; render(); }
+      return;
+    }
+    const key = form.elements.key.value.trim();
     if (ctx.state().doc.design.colors[key]) return ctx.toast('A colour with that name exists.');
     if (ctx.commit([{ path: ['design', 'colors', key], value: form.elements.hex.value }], { label: 'Add colour' })) addingColor = false;
     render();

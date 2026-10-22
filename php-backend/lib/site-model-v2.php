@@ -185,6 +185,25 @@ function nimble_v2_background(mixed $input, array $ctx): ?array
         $result['position'] = nimble_v2_value('enum:center,top,bottom,left,right,top-left,top-right,bottom-left,bottom-right', $input['position'] ?? 'center', $ctx);
         $result['repeat'] = ($input['repeat'] ?? null) === true;
         if ($result['size'] === null || $result['position'] === null) return null;
+        if (array_key_exists('focal', $input) && $input['focal'] !== null) {
+            if (!nimble_v2_is_list($input['focal']) || count($input['focal']) !== 2) return null;
+            $focal = [];
+            foreach ($input['focal'] as $item) { $v = nimble_v2_value('num:0:100', $item, $ctx); if ($v === null) return null; $focal[] = $v; }
+            $result['focal'] = $focal;
+        }
+        foreach (['overlay', 'color'] as $key) {
+            if (!array_key_exists($key, $input) || $input[$key] === null) continue;
+            $c = nimble_v2_color($input[$key], $ctx);
+            if ($c === null) return null;
+            $result[$key] = $c;
+        }
+        return $result;
+    }
+    if ($kind === 'video') {
+        $src = nimble_v2_safe_url($input['src'] ?? null);
+        if ($src === '' || (nimble_v2_video_source($src)['kind'] ?? null) !== 'file') return null;
+        $result = ['kind' => 'video', 'src' => $src];
+        if (array_key_exists('poster', $input) && $input['poster'] !== null && $input['poster'] !== '') { $poster = nimble_v2_safe_url($input['poster']); if ($poster === '') return null; $result['poster'] = $poster; }
         foreach (['overlay', 'color'] as $key) {
             if (!array_key_exists($key, $input) || $input[$key] === null) continue;
             $c = nimble_v2_color($input[$key], $ctx);
@@ -350,6 +369,12 @@ function nimble_v2_node(string $id, array $source, array $info, array $ctx): arr
     if ($place !== null) $node['place'] = $place;
     $style = nimble_v2_responsive($spec['style'], $source['style'] ?? null, $ctx, 'style');
     if ($style !== null) $node['style'] = $style;
+    if ($style !== null && empty($definition['container'])) foreach ($style as $values) if (($values['background']['kind'] ?? null) === 'video') nimble_error('Video backgrounds are only available for sections and containers.');
+    if (array_key_exists('hover', $source) && $source['hover'] !== null) {
+        $hover = nimble_v2_props($spec['hover'], $source['hover'], $ctx, 'hover');
+        if (($hover['background']['kind'] ?? null) === 'video') nimble_error('Hover backgrounds cannot be videos.');
+        if ($hover) $node['hover'] = $hover;
+    }
     if (array_key_exists('hidden', $source) && $source['hidden'] !== null) {
         if (!nimble_v2_is_object($source['hidden'])) nimble_error('Hidden must be an object keyed by breakpoint.');
         $hidden = [];
@@ -380,7 +405,7 @@ function nimble_v2_design(mixed $input, array &$ctx): array
         if (!nimble_v2_is_object($font) || !is_string($font['id'] ?? null) || !nimble_v2_match('key', $font['id']) || isset($fontIds[$font['id']])) nimble_error('Fonts need unique short lowercase IDs.');
         $source = $font['source'] ?? null; $family = $font['family'] ?? null;
         if ($source === 'system' && is_string($family) && array_key_exists($family, $spec['systemFonts'])) $fonts[] = ['id' => $font['id'], 'source' => 'system', 'family' => $family];
-        elseif ($source === 'custom' && nimble_v2_match('fontFamily', $family) && nimble_v2_match('fontFile', $font['src'] ?? null)) $fonts[] = ['id' => $font['id'], 'source' => 'custom', 'family' => $family, 'src' => $font['src']];
+        elseif ($source === 'custom' && nimble_v2_match('fontFamily', $family)) $fonts[] = nimble_v2_custom_font($font);
         else nimble_error('Fonts must be a system font or an uploaded font file.');
         $fontIds[$font['id']] = true;
     }
@@ -395,6 +420,44 @@ function nimble_v2_design(mixed $input, array &$ctx): array
     $result = ['colors' => $colors, 'fonts' => $fonts, 'textStyles' => $textStyles];
     $body = nimble_v2_props(['font' => 'font', 'color' => 'color', 'background' => 'color'], array_key_exists('body', $design) ? $design['body'] : ['font' => 'body', 'color' => '@ink', 'background' => '@bg'], $ctx, 'body style');
     if ($body) $result['body'] = $body;
+    if (array_key_exists('presets', $design) && $design['presets'] !== null) {
+        if (!nimble_v2_is_list($design['presets']) || count($design['presets']) > $limits['presets']) nimble_error('Use no more than ' . $limits['presets'] . ' saved designs.');
+        $ids = []; $presets = [];
+        foreach ($design['presets'] as $preset) {
+            if (!nimble_v2_is_object($preset) || !is_string($preset['id'] ?? null) || !nimble_v2_match('key', $preset['id']) || isset($ids[$preset['id']])) nimble_error('Saved designs need unique short lowercase IDs.');
+            if (!is_string($preset['type'] ?? null) || !array_key_exists($preset['type'], $spec['nodeTypes'])) nimble_error('Saved designs need an element type.');
+            $ids[$preset['id']] = true;
+            $name = trim(nimble_v2_text($preset['name'] ?? null, 60, 'Design name'));
+            if ($name === '') nimble_error('Saved designs need a name.');
+            $item = ['id' => $preset['id'], 'name' => $name, 'type' => $preset['type']];
+            $presetStyle = nimble_v2_responsive($spec['style'], $preset['style'] ?? null, $ctx, 'style');
+            if ($presetStyle !== null) $item['style'] = $presetStyle;
+            $presets[] = $item;
+        }
+        if ($presets) $result['presets'] = $presets;
+    }
+    return $result;
+}
+function nimble_v2_custom_font(array $font): array
+{
+    $limits = nimble_v2_spec()['limits'];
+    $result = ['id' => $font['id'], 'source' => 'custom', 'family' => $font['family']];
+    if (array_key_exists('src', $font) && $font['src'] !== null) {
+        if (!nimble_v2_match('fontFile', $font['src'])) nimble_error('Fonts must be a system font or an uploaded font file.');
+        $result['src'] = $font['src'];
+    }
+    if (array_key_exists('files', $font) && $font['files'] !== null) {
+        if (!nimble_v2_is_list($font['files']) || count($font['files']) < 1 || count($font['files']) > $limits['fontFiles']) nimble_error('Fonts can have 1–' . $limits['fontFiles'] . ' files.');
+        $result['files'] = [];
+        foreach ($font['files'] as $file) {
+            if (!nimble_v2_is_object($file) || !nimble_v2_match('fontFile', $file['src'] ?? null)) nimble_error('Font files must be uploaded font files.');
+            $weight = ($file['weight'] ?? null) === null ? 400 : nimble_v2_value('int:100:900', $file['weight'], []);
+            $style = ($file['style'] ?? null) === null ? 'normal' : nimble_v2_value('enum:normal,italic', $file['style'], []);
+            if ($weight === null || $style === null) nimble_error('Font files need a weight of 100–900 and a normal or italic style.');
+            $result['files'][] = ['src' => $file['src'], 'weight' => $weight, 'style' => $style];
+        }
+    }
+    if (!isset($result['src']) && !isset($result['files'])) nimble_error('Fonts must be a system font or an uploaded font file.');
     return $result;
 }
 function nimble_v2_breakpoints(mixed $input): array

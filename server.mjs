@@ -9,6 +9,7 @@ import { normalizeSite, makeDefaultSite, escapeHtml, hasForm } from './lib/site-
 import { publishAtomic, currentRelease } from './lib/publish-atomic.mjs';
 import { pageHtml } from './lib/render.mjs';
 import { validPassword, passwordHash, checkPassword } from './lib/passwords.mjs';
+import { fontRequest, cssUrl, parseFontCss, allowedFontUrl, isWoff2 } from './lib/fonts.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const storage = path.resolve(process.env.NIMBLE_STORAGE_DIR || root);
@@ -199,7 +200,7 @@ function templateInput(body, current = null) {
   return { name, description, document };
 }
 function templateRow(id) { return db.prepare("SELECT * FROM templates WHERE id=? AND site_id='nimble'").get(id); }
-const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm' };
+const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
 async function sendFile(req, res, filename, { html = false, immutable = false } = {}) {
   const info = await fs.stat(filename);
   if (!info.isFile()) throw problem(404, 'Not found.');
@@ -233,25 +234,58 @@ function detectMedia(bytes, type) {
   if (type === 'image/webp' && bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP') return 'webp';
   if (type === 'video/mp4' && bytes.subarray(4, 8).toString() === 'ftyp') return 'mp4';
   if (type === 'video/webm' && bytes.subarray(0, 4).equals(Buffer.from([26,69,223,163]))) return 'webm';
-  throw problem(400, 'The file contents do not match a supported image or video format.');
+  if (type === 'font/woff2' && bytes.subarray(0, 4).toString('latin1') === 'wOF2') return 'woff2';
+  if (type === 'font/woff' && bytes.subarray(0, 4).toString('latin1') === 'wOFF') return 'woff';
+  if (type === 'font/ttf' && (bytes.subarray(0, 4).equals(Buffer.from([0, 1, 0, 0])) || bytes.subarray(0, 4).toString('latin1') === 'true')) return 'ttf';
+  if (type === 'font/otf' && bytes.subarray(0, 4).toString('latin1') === 'OTTO') return 'otf';
+  throw problem(400, 'The file contents do not match a supported image, video or font format.');
 }
 let mediaQueue = Promise.resolve();
 async function storeMedia(body) {
-  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif)|video\/(?:mp4|webm));base64,([a-z0-9+/]+={0,2})$/i);
-  if (!match || match[2].length > Math.ceil(maxMediaBytes / 3) * 4) throw problem(400, 'Upload an image or video no larger than 15 MB.');
+  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif)|video\/(?:mp4|webm)|font\/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$/i);
+  if (!match || match[2].length > Math.ceil(maxMediaBytes / 3) * 4) throw problem(400, 'Upload an image, video or font no larger than 15 MB.');
   const bytes = Buffer.from(match[2], 'base64');
   if (bytes.toString('base64') !== match[2] || bytes.length > maxMediaBytes) throw problem(400, 'Invalid media encoding or file size.');
   const extension = detectMedia(bytes, match[1].toLowerCase());
+  const kind = match[1].toLowerCase().startsWith('video') ? 'video' : match[1].toLowerCase().startsWith('font') ? 'font' : 'image';
+  return saveUpload(bytes, extension, String(body.name || 'Media').slice(0, 200), kind);
+}
+function saveUpload(bytes, extension, name, kind) {
   const task = mediaQueue.catch(() => {}).then(async () => {
     const files = await fs.readdir(uploads, { withFileTypes: true });
     const sizes = await Promise.all(files.filter(file => file.isFile()).map(async file => (await fs.stat(path.join(uploads, file.name))).size));
     if (sizes.reduce((sum, size) => sum + size, 0) + bytes.length > maxStorageBytes) throw problem(413, 'Your media storage is full. Contact the site administrator.');
     const filename = randomUUID() + '.' + extension;
     await fs.writeFile(path.join(uploads, filename), bytes, { flag: 'wx' });
-    return { url: '/uploads/' + filename, name: String(body.name || 'Media').slice(0, 200), kind: match[1].startsWith('video') ? 'video' : 'image' };
+    return { url: '/uploads/' + filename, name, kind };
   });
   mediaQueue = task;
   return task;
+}
+// Downloads a Google font once and stores its WOFF2 files like other uploads.
+async function importGoogleFont(body) {
+  const request = fontRequest(body);
+  if (request.error) throw problem(400, request.error);
+  const base = process.env.NIMBLE_GOOGLE_FONTS_URL || 'https://fonts.googleapis.com';
+  const agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+  let response;
+  try { response = await fetch(cssUrl(base, request), { headers: { 'User-Agent': agent }, redirect: 'error', signal: AbortSignal.timeout(15000) }); }
+  catch { throw problem(502, 'Google Fonts could not be reached from this server.'); }
+  if (response.status === 400 || response.status === 404) throw problem(404, 'Google Fonts has no family called ' + request.family + ' with those weights.');
+  if (!response.ok) throw problem(502, 'Google Fonts returned an error (' + response.status + ').');
+  const faces = parseFontCss((await response.text()).slice(0, 200_000));
+  if (!faces.length) throw problem(404, 'Google Fonts has no web font files for ' + request.family + '.');
+  const files = [];
+  for (const face of faces.slice(0, 12)) {
+    if (!allowedFontUrl(face.url, base)) throw problem(502, 'Google Fonts returned an unexpected file address.');
+    let file;
+    try { file = await fetch(face.url, { redirect: 'error', signal: AbortSignal.timeout(15000) }); } catch { throw problem(502, 'A font file could not be downloaded.'); }
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (!file.ok || bytes.length > 2_000_000 || !isWoff2(bytes)) throw problem(502, 'A font file was not a valid WOFF2 file.');
+    const stored = await saveUpload(bytes, 'woff2', request.family + ' ' + face.weight + (face.style === 'italic' ? ' italic' : ''), 'font');
+    files.push({ src: stored.url, weight: face.weight, style: face.style });
+  }
+  return { family: request.family, files };
 }
 function contactToken(block) {
   const payload = Buffer.from(JSON.stringify({ block, expires: Date.now() + 3600000, nonce: randomBytes(8).toString('hex') })).toString('base64url');
@@ -271,7 +305,7 @@ const assets = new Map([
   ['/assets/public.css', 'assets/public.css'], ['/assets/editor.css', 'assets/editor.css'],
   ['/assets/site-model.mjs', 'lib/site-model.mjs'], ['/assets/render.mjs', 'lib/render.mjs'],
   ['/assets/public-v2.css', 'assets/public-v2.css'], ['/assets/site-model-v2.mjs', 'lib/site-model-v2.mjs'],
-  ['/assets/render-v2.mjs', 'lib/render-v2.mjs'], ['/assets/migrate-v1.mjs', 'lib/migrate-v1.mjs'], ['/assets/nimble-spec.json', 'lib/nimble-spec.json']
+  ['/assets/render-v2.mjs', 'lib/render-v2.mjs'], ['/assets/migrate-v1.mjs', 'lib/migrate-v1.mjs'], ['/assets/nimble-spec.json', 'lib/nimble-spec.json'], ['/assets/fonts.mjs', 'lib/fonts.mjs']
 ]);
 const server = http.createServer(async (req, res) => {
   headers(res);
@@ -396,6 +430,12 @@ const server = http.createServer(async (req, res) => {
       const result = await storeMedia(await readBody(req, 22_000_000)); audit(auth.user.id, 'media_uploaded', { url: result.url });
       return send(res, 201, result);
     }
+    if (pathname === '/api/fonts/google' && method === 'POST') {
+      const auth = requireAccess(req, 'edit', true);
+      rate('fonts:' + auth.user.id, 30, 60 * 60000);
+      const result = await importGoogleFont(await readBody(req, 10000)); audit(auth.user.id, 'font_imported', { family: result.family, files: result.files.length });
+      return send(res, 201, result);
+    }
     if (pathname === '/api/publish' && method === 'POST') {
       const auth = requireAccess(req, 'publish', true), body = await readBody(req);
       const row = body.pages ? savedDocument(req, body) : siteRow();
@@ -486,7 +526,7 @@ const server = http.createServer(async (req, res) => {
       return await sendFile(req, res, path.join(root, pathname.slice(1)), { html: true });
     }
     if (pathname === '/login.html') return await sendFile(req, res, path.join(root, 'login.html'), { html: true });
-    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
+    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm|woff2|woff|ttf|otf)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
     const release = await currentRelease(published);
     if (pathname === '/robots.txt') return send(res, 200, 'User-agent: *\n' + (release?.site.site.searchVisible ? 'Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /editor.html\nDisallow: /control-panel.html\n' : 'Disallow: /\n'), 'text/plain; charset=utf-8');
     if (pathname === '/sitemap.xml' && release && publicOrigin) return send(res, 200, '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + release.site.pages.map(page => '<url><loc>' + escapeHtml(publicOrigin + (page.id === 'home' ? '/' : '/' + page.id + '.html')) + '</loc></url>').join('') + '</urlset>', 'application/xml; charset=utf-8');

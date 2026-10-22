@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "site": { "name": "Design features" },
+  "design": {
+    "colors": { "brand": "#2255ff" },
+    "fonts": [
+      { "id": "display", "source": "custom", "family": "Brand Display", "files": [ { "src": "/uploads/brand-regular.woff2" }, { "src": "/uploads/brand-bold.woff2", "weight": 700 }, { "src": "/uploads/brand-italic.woff2", "weight": 400, "style": "italic" } ] },
+      { "id": "legacy", "source": "custom", "family": "Legacy", "src": "/uploads/legacy.woff" },
+      { "id": "heading", "source": "custom", "family": "Brand Display", "files": [ { "src": "/uploads/brand-regular.woff2" }, { "src": "/uploads/brand-bold.woff2", "weight": 700 } ] }
+    ],
+    "textStyles": { "h1": { "desktop": { "font": "display", "fontSize": "60px", "fontWeight": 700 } } },
+    "presets": [
+      { "id": "primary-button", "name": "Primary button", "type": "button", "style": { "desktop": { "background": { "kind": "color", "color": "@brand" }, "color": "#fff", "radius": ["999px", "999px", "999px", "999px"] }, "mobile": { "padding": ["10px", "16px", "10px", "16px"] } } },
+      { "id": "empty", "name": "  Card  ", "type": "container" }
+    ]
+  },
+  "pages": [ { "id": "home", "name": "Home", "children": ["hero", "plain"] } ],
+  "nodes": {
+    "hero": { "type": "section", "children": ["title", "cta"],
+      "style": {
+        "desktop": { "background": { "kind": "video", "src": "/uploads/loop.mp4", "poster": "/uploads/poster.jpg", "overlay": "#00000066", "color": "#101020" }, "scrollEffect": "parallax" },
+        "tablet": { "background": { "kind": "image", "src": "/uploads/still.jpg", "focal": [30, 75.5], "overlay": "#00000040" }, "scrollEffect": "reveal" },
+        "mobile": { "background": { "kind": "video", "src": "/uploads/small.webm" }, "scrollEffect": "none" }
+      } },
+    "title": { "type": "text", "props": { "doc": [ { "t": "h1", "c": [ { "text": "Hover me" } ] } ] }, "hover": { "color": "@brand", "duration": 400 }, "style": { "desktop": { "blendMode": "difference" } } },
+    "cta": { "type": "button", "props": { "label": "Go" }, "hover": { "background": { "kind": "gradient", "angle": 90, "stops": [ { "color": "@brand", "at": 0 }, { "color": "#ff00aa", "at": 100 } ] }, "borderColor": "#000", "shadow": [ { "y": "8px", "blur": "24px", "color": "#00000040" } ], "opacity": 0.9, "scale": 1.05, "translateY": "-2px" }, "place": { "desktop": { "rotate": 3 } } },
+    "plain": { "type": "section", "hover": { "duration": 0 } }
+  }
+}

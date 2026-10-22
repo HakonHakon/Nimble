@@ -86,13 +86,38 @@ The **Add** panel includes layout presets:
   - **Copy design / Paste design** copies only the Design values.
 - **Moving a section.** Drag its name tag above the selection box. Dragging inside a section draws a selection rectangle.
 
+## Design tab
+
+- **Colours.** Every colour field has a swatch that opens the picker:
+  - theme colours and transparent
+  - the last 10 colours you used (remembered in this browser)
+  - a custom colour, with an opacity slider (saved as `#rrggbbaa`)
+  - Eyedropper, in browsers that support it (Chrome, Edge)
+
+  You can also type a hex value or `@name`.
+- **Background:** colour, gradient, image or (sections and containers only) video.
+  - Gradients take up to 8 colour stops with positions, and are linear or radial.
+  - Images take a focal point: click the preview to choose the spot that stays visible when the image is cropped.
+  - Images and videos accept an overlay colour.
+- **Border, corners and shadows.** A border can apply to any sides. Corner radius is set per corner. You can stack up to four shadows, each of them outer or inner.
+- **Blend mode and scroll effect** (parallax or reveal) are set per breakpoint, like every other Design value.
+- **Hover** (collapsible group): text, background and border colour, shadow, opacity, scale, vertical movement and transition time. The hover design applies on every breakpoint. You can preview it by pointing at the element on the canvas.
+- **Saved designs.** *Save design…* stores the element's design on all breakpoints under a name. *Apply saved design* copies it onto another element of the same type. You can remove saved designs in the Site panel.
+
 ## Site, media and templates
 
 - **Media:** upload images and videos. Click an image to put it into the selected image element, or to add a new image after the selection.
 - **Site:**
   - site name, description, language, social image, and visibility in search engines
   - theme colours: edit them, or add your own, which can be used as `@name`; every element that uses a colour updates
-  - heading and body fonts
+  - **Fonts:**
+    - *Add a Google font*: the server downloads the WOFF2 files for the chosen weights, plus italics if you ask for them, and stores them with your uploads, so visitors never connect to Google.
+    - *Upload font file*: WOFF2, WOFF, TTF or OTF.
+    - Choose any font for headings or body text. You can remove a font only when nothing uses it.
+  - **Text styles** (Heading 1–6, Paragraph 1–3): font, size, weight, line height, letter spacing, colour and case.
+    - On Desktop they set the base design. On smaller breakpoints they override it, and empty fields inherit.
+    - Every text that uses the style updates.
+  - **Saved designs:** the list, with remove buttons.
 - **Templates** (top bar):
   - built-in starting points and your saved templates; applying one replaces the draft, and Undo brings it back
   - save the current site as a template

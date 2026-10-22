@@ -26,3 +26,27 @@ document.querySelectorAll('[data-contact-form]').forEach(form => {
     finally { button.disabled = false; }
   });
 });
+
+// Background scroll effects. "reveal" is pure CSS (fixed background); "parallax" moves the
+// background more slowly than the page. The effect can differ per breakpoint, so it is read from CSS.
+(() => {
+  const items = [...document.querySelectorAll('[data-fx]')];
+  if (!items.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let queued = false;
+  const update = () => {
+    queued = false;
+    const height = innerHeight;
+    for (const element of items) {
+      const effect = getComputedStyle(element).getPropertyValue('--fx').trim();
+      if (effect !== 'parallax') { element.style.removeProperty('background-position-y'); continue; }
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > height) continue;
+      const progress = (rect.top + rect.height) / (height + rect.height) - 0.5;
+      element.style.backgroundPositionY = 'calc(50% + ' + Math.round(progress * rect.height * 0.35) + 'px)';
+    }
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
+  addEventListener('scroll', queue, { passive: true });
+  addEventListener('resize', queue);
+  update();
+})();

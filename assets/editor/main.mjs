@@ -206,6 +206,7 @@ function switchBreakpoint(id, { keepWidth = false } = {}) {
   app.bp = bpIds().includes(id) ? id : 'desktop';
   if (!keepWidth) app.previewWidth = null;
   renderChrome(); inspector.render(); layers.render(); rulers.load();
+  if (app.tool === 'site') sitePanel.render();
 }
 // Dragging the handle beside the canvas previews any width; the breakpoint follows the width.
 function widthDrag(event) {

@@ -272,7 +272,7 @@ test('v2 editor: media, site settings, colours, fonts, templates, import/export 
     assert.ok((await doc()).design.colors.brand);
     await page.locator('[data-remove-color=brand]').click();
     assert.equal((await doc()).design.colors.brand, undefined);
-    await page.locator('[data-font=heading]').selectOption('mono');
+    await page.locator('[data-font=heading]').selectOption('system:mono');
     assert.equal((await doc()).design.fonts.find(font => font.id === 'heading').family, 'mono');
     assert.match(await canvas.locator('h1').first().evaluate(el => getComputedStyle(el).fontFamily), /monospace/);
     assert.equal((await doc()).site.searchVisible, true);
