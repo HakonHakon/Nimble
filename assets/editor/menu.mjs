@@ -9,7 +9,7 @@ export const MENU = [
   [['group', 'Group', 'Mod+G'], ['ungroup', 'Ungroup', 'Mod+Shift+G']],
   [['front', 'Bring to front', 'Mod+Shift+]'], ['forward', 'Bring forward', 'Mod+]'], ['backward', 'Send backward', 'Mod+['], ['back', 'Send to back', 'Mod+Shift+[']],
   [['alignLeft', 'Align left'], ['alignCenter', 'Align centre'], ['alignRight', 'Align right'], ['alignTop', 'Align top'], ['alignMiddle', 'Align middle'], ['alignBottom', 'Align bottom'], ['distributeX', 'Distribute horizontally'], ['distributeY', 'Distribute vertically']],
-  [['lock', 'Lock / unlock', 'Mod+Shift+L'], ['hide', 'Hide / show here', 'Mod+Shift+H'], ['selectAll', 'Select all siblings', 'Mod+A']],
+  [['lock', 'Lock / unlock', 'Mod+Shift+L'], ['hide', 'Hide / show here', 'Mod+Shift+H'], ['selectAll', 'Select all siblings', 'Mod+A'], ['sortByPosition', 'Sort layers by position']],
   [['delete', 'Delete', 'Del']]
 ];
 

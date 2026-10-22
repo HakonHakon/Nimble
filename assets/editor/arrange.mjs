@@ -290,6 +290,20 @@ export function createArranger(canvas, transformer, ctx) {
     if (!styleMemory) return ctx.toast('Copy a design first (Ctrl+Alt+C).');
     commit(selection().map(id => ({ path: ['nodes', id, 'style'], value: structuredClone(styleMemory.style) ?? undefined })), 'Paste design');
   }
+  // Layers order is reading order for screen readers and for stacks on small screens; make it follow
+  // what visitors see on desktop (top to bottom, then left to right).
+  function sortByPosition() {
+    const id = st().selected, container = isContainer(nodeOf(id).type) ? id : parentOf(id);
+    const { doc } = st();
+    const items = doc.nodes[container].children.map(child => ({ id: child, el: canvas.element(child) })).filter(item => item.el?.getClientRects().length).map(item => ({ id: item.id, b: layoutBox(item.el) }));
+    const hidden = doc.nodes[container].children.filter(child => !items.some(item => item.id === child));
+    // Elements that overlap vertically by more than half the smaller height share a row: left to right.
+    const sameRow = (a, b) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > Math.min(a.height, b.height) / 2;
+    items.sort((a, b) => sameRow(a.b, b.b) ? a.b.left - b.b.left : a.b.top - b.b.top);
+    const next = [...items.map(item => item.id), ...hidden];
+    if (JSON.stringify(next) === JSON.stringify(doc.nodes[container].children)) return ctx.toast('Layers already follow the page order.');
+    commit([{ path: ['nodes', container, 'children'], value: next }], 'Sort layers by position');
+  }
   function selectAll() {
     const { selected, page } = st();
     const parent = selected ? parentOf(selected) : null;
@@ -316,6 +330,7 @@ export function createArranger(canvas, transformer, ctx) {
       case 'order': return editable && ids.length > 0 && siblings(ids) && parentOf(ids[0]) !== null && transformer.modeOf(parentOf(ids[0])) === 'grid';
       case 'lock': case 'hide': return editable && ids.length > 0;
       case 'selectAll': return true;
+      case 'sortByPosition': { if (!editable || !one || st().bp !== 'desktop') return false; const container = isContainer(nodeOf(ids[0]).type) ? ids[0] : parentOf(ids[0]); return !!container && nodeOf(container).children.length > 1; }
       default: return false;
     }
   }
@@ -323,7 +338,7 @@ export function createArranger(canvas, transformer, ctx) {
     copy: () => { store(snapshot(selection())); ctx.toast(selection().length > 1 ? selection().length + ' elements copied.' : 'Copied.'); },
     cut: () => { store(snapshot(selection())); remove(); },
     paste: () => paste(),
-    duplicate, delete: remove, copyStyle, pasteStyle, group, ungroup, selectAll,
+    duplicate, delete: remove, copyStyle, pasteStyle, group, ungroup, selectAll, sortByPosition,
     alignLeft: () => align('left'), alignCenter: () => align('center'), alignRight: () => align('right'),
     alignTop: () => align('top'), alignMiddle: () => align('middle'), alignBottom: () => align('bottom'),
     distributeX: () => distribute('x'), distributeY: () => distribute('y'),

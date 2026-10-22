@@ -5,6 +5,7 @@ import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { TYPES, label, ancestors } from './tree.mjs';
 import { hiddenAt } from './layers.mjs';
 import { createLayoutPanel } from './layout-panel.mjs';
+import { overridesAt, resetOps } from './breakpoints.mjs';
 
 const LABELS = {
   mode: 'Layout', columns: 'Columns', rows: 'Rows', rowGap: 'Row gap', columnGap: 'Column gap', direction: 'Direction', wrap: 'Wrap', justify: 'Justify', align: 'Align items',
@@ -207,8 +208,12 @@ export function createInspector(root, ctx) {
     const chain = ancestors(index, selected).map(id => '<button class="crumb' + (id === selected ? ' current' : '') + '" data-crumb="' + esc(id) + '">' + esc(label(doc.nodes[id])) + '</button>').join('<span>›</span>');
     let body = '';
     if (tab === 'content') body = spec.nodeTypes[node.type].props ? propFields(node) : '<p class="hint">' + esc(TYPES[node.type].label) + ' with ' + (node.children?.length || 0) + ' element(s). Use Add to place elements inside it, or drag them in Layers.</p>';
-    if (tab === 'layout') body = layoutPanel.render(node);
-    if (tab === 'design') body = responsiveFields('style', spec.style, node, Object.keys(spec.style).filter(key => !(key === 'padding' && spec.nodeTypes[node.type].container)));
+    // Below desktop, show how many values this element overrides here, with a one-click reset.
+    const overrides = bp === 'desktop' ? [] : overridesAt(node, bp);
+    const bpName = doc.breakpoints.find(item => item.id === bp)?.name || bp;
+    const summary = overrides.length && (tab === 'layout' || tab === 'design') ? '<div class="override-summary"><span>' + overrides.length + ' change' + (overrides.length === 1 ? '' : 's') + ' on ' + esc(bpName) + '</span><button class="link-button" data-reset-bp>Reset to inherited</button></div>' : '';
+    if (tab === 'layout') body = summary + layoutPanel.render(node);
+    if (tab === 'design') body = summary + responsiveFields('style', spec.style, node, Object.keys(spec.style).filter(key => !(key === 'padding' && spec.nodeTypes[node.type].container)));
     if (tab === 'settings') {
       const { bpIds } = ctx.state();
       const tags = spec.nodeTypes[node.type].tags;
@@ -293,6 +298,10 @@ export function createInspector(root, ctx) {
       + '<p class="hint">Align and distribute work on elements in the same freeform grid. Group needs elements in the same container, on Desktop.</p></div>';
   }
   root.addEventListener('click', event => {
+    if (event.target.closest('[data-reset-bp]') && ctx.editable()) {
+      const { doc, bp, selected } = ctx.state();
+      return void ctx.commit(resetOps(doc.nodes[selected], bp), { label: 'Reset changes on ' + bp });
+    }
     const arrange = event.target.closest('[data-arrange]');
     if (arrange) { ctx.arrange(arrange.dataset.arrange); return; }
     if (event.target.closest('.lp') && layoutPanel.onClick(event, root)) return;

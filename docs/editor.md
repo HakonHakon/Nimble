@@ -56,6 +56,21 @@ The **Add** panel includes layout presets:
 - Grids: two columns and three columns. The three-column grid uses two columns on tablet and one on mobile.
 - Vertical and horizontal stacks, and a plain box.
 
+## Breakpoints
+
+- **Base design.** Desktop is the base. Every other breakpoint applies at its maximum width and below, and stores only what you change on it.
+- **Managing breakpoints.** The ⋯ button next to the breakpoint switcher opens the breakpoint manager, where you can add (up to 5), rename, resize or remove breakpoints.
+  - The manager shows how many elements each breakpoint changes.
+  - Removing a breakpoint also removes its changes. Undo restores both.
+- **Preview width.** Drag the handle on the right of the page to preview any width between 320 and 1920 px. The active breakpoint follows the width; choosing a breakpoint in the top bar resets the preview to its usual width.
+- **Changed and inherited values.** Below desktop:
+  - The inspector shows how many values the selected element changes on that breakpoint, with **Reset to inherited** to clear them all.
+  - Single values have a dot and ×.
+  - Inherited values show as grey placeholders.
+  - Layers marks changed elements with ◆.
+- **Hide per breakpoint.** Hide an element on any breakpoint with the eye in Layers, in Settings › Visible on, or with Ctrl/⌘+Shift+H.
+- **Reading order.** Screen readers, and stacks on smaller screens, follow the Layers order. On Desktop, **Sort layers by position** (Layout tab of a container, or the right-click menu) reorders the content top to bottom and left to right as it appears on the page.
+
 ## Selecting several elements and arranging them
 
 - Shift-click (or Ctrl/⌘-click) on the canvas or in Layers adds or removes elements. Dragging across empty section space draws a selection rectangle. Ctrl/⌘+A selects all elements that share the parent of the current one.

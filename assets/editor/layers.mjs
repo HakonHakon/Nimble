@@ -1,5 +1,6 @@
 // Layers panel: the element tree of the current page with rename, hide, lock and drag-to-reorder.
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
+import { overridesAt } from './breakpoints.mjs';
 import { TYPES, label, ancestors, isContainer, isRoot, canDrop, moveOps, listOf } from './tree.mjs';
 
 export function hiddenAt(node, bpIds, bp) {
@@ -29,7 +30,7 @@ export function createLayers(root, ctx) {
       out.push('<div class="layer-row' + (selection.includes(id) ? ' selected' : '') + (id === selected ? ' primary' : '') + (hidden ? ' is-hidden' : '') + (dimmed ? ' is-dimmed' : '') + '" role="treeitem" tabindex="' + (id === selected ? '0' : '-1') + '" aria-level="' + (depth + 1) + '" aria-selected="' + selection.includes(id) + '"' + (children.length ? ' aria-expanded="' + open + '"' : '') + ' data-id="' + esc(id) + '" draggable="' + (region === 'page' || depth > 0) + '" style="--depth:' + depth + '">'
         + '<button class="layer-toggle" data-toggle tabindex="-1" aria-hidden="true"' + (children.length ? '' : ' disabled') + '>' + (children.length ? (open ? '▾' : '▸') : '') + '</button>'
         + '<span class="layer-icon" aria-hidden="true">' + (TYPES[node.type]?.icon || '•') + '</span>'
-        + (renaming === id ? '<input class="layer-rename" value="' + esc(node.name || '') + '" placeholder="' + esc(label(node)) + '" aria-label="Element name">' : '<span class="layer-name">' + esc(title) + '</span>')
+        + (renaming === id ? '<input class="layer-rename" value="' + esc(node.name || '') + '" placeholder="' + esc(label(node)) + '" aria-label="Element name">' : '<span class="layer-name">' + esc(title) + '</span>') + (bp !== 'desktop' && overridesAt(node, bp).length ? '<span class="layer-badge" title="Changed on this breakpoint" aria-label="changed on this breakpoint">◆</span>' : '')
         + '<button class="layer-action" data-eye tabindex="-1" title="' + (hidden ? 'Show' : 'Hide') + ' on ' + esc(bp) + '" aria-label="' + (hidden ? 'Show' : 'Hide') + ' ' + esc(title) + '">' + (hidden ? '◌' : '●') + '</button>'
         + '<button class="layer-action" data-lock tabindex="-1" title="' + (node.locked ? 'Unlock' : 'Lock') + '" aria-label="' + (node.locked ? 'Unlock' : 'Lock') + ' ' + esc(title) + '">' + (node.locked ? '🔒' : '🔓') + '</button></div>');
       if (open) for (const child of children) walk(child, depth + 1, 'node');

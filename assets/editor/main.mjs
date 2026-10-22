@@ -12,10 +12,12 @@ import { createRulers } from './rulers.mjs';
 import { createArranger } from './arrange.mjs';
 import { createMenu, shortcutSheet } from './menu.mjs';
 import { createMediaPanel, createSitePanel, createTemplates } from './site-panels.mjs';
+import { createBreakpointManager, breakpointForWidth, rangeOf, MIN_WIDTH, MAX_WIDTH } from './breakpoints.mjs';
+import { shield } from './transform.mjs';
 import { indexTree, ancestors, descendants, listOf, label } from './tree.mjs';
 
 const $ = selector => document.querySelector(selector);
-const app = { store: null, user: null, role: 'viewer', csrf: '', revision: 0, loaded: false, locked: false, dirty: false, pageId: 'home', bp: 'desktop', selected: null, selection: [], tool: 'layers', converted: false };
+const app = { store: null, user: null, role: 'viewer', csrf: '', revision: 0, loaded: false, locked: false, dirty: false, pageId: 'home', bp: 'desktop', selected: null, selection: [], previewWidth: null, tool: 'layers', converted: false };
 let saveTimer = null, saving = null, cachedIndex = null, cachedFor = null, transformer = null, rulers = null, arranger = null, menu = null;
 const prefs = (() => { try { return { snap: true, rulers: true, grid: false, ...JSON.parse(localStorage.getItem('nimble-editor-prefs') || '{}') }; } catch { return { snap: true, rulers: true, grid: false }; } })();
 const savePrefs = () => { try { localStorage.setItem('nimble-editor-prefs', JSON.stringify(prefs)); } catch {} };
@@ -137,6 +139,8 @@ const ctx = {
   api: (url, options) => api(url, options),
   dialog: (title, html) => showDialog(title, html),
   closeDialog: () => closeDialog(),
+  switchBreakpoint: id => switchBreakpoint(id),
+  breakpointRemoved: id => { if (app.bp === id) switchBreakpoint('desktop'); },
   contextMenu: (x, y) => menu.open(x, y),
   refresh: () => inspector.render(),
   showLayout: () => inspector.setTab('layout'),
@@ -172,8 +176,10 @@ const pagesPanel = createPagesPanel($('#pagesPanel'), ctx);
 const mediaPanel = createMediaPanel($('#mediaPanel'), ctx);
 const sitePanel = createSitePanel($('#sitePanel'), ctx);
 const templates = createTemplates(ctx);
+const breakpointManager = createBreakpointManager(ctx);
 
 function deviceWidth(bp) {
+  if (app.previewWidth) return app.previewWidth;
   const available = $('#canvasScroll').clientWidth - 48;
   const list = doc().breakpoints;
   if (bp === 'desktop') return Math.max((list[0]?.max ?? 0) + 1, Math.min(1440, Math.max(available, 1280)));
@@ -196,10 +202,34 @@ function renderChrome() {
   document.querySelectorAll('.rail-button[data-tool]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tool === app.tool)));
   document.querySelectorAll('.tool-panel').forEach(panel => { panel.hidden = panel.dataset.panel !== app.tool; });
 }
+function switchBreakpoint(id, { keepWidth = false } = {}) {
+  app.bp = bpIds().includes(id) ? id : 'desktop';
+  if (!keepWidth) app.previewWidth = null;
+  renderChrome(); inspector.render(); layers.render(); rulers.load();
+}
+// Dragging the handle beside the canvas previews any width; the breakpoint follows the width.
+function widthDrag(event) {
+  event.preventDefault();
+  const release = shield('ew-resize');
+  const scale = canvas.scale, startX = event.clientX, startWidth = deviceWidth(app.bp);
+  const scroll = $('#canvasScroll');
+  const move = moveEvent => {
+    const width = Math.round(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + (moveEvent.clientX - startX) * 2 / scale)));
+    app.previewWidth = width;
+    const bp = breakpointForWidth(doc().breakpoints, width);
+    canvas.setViewport(width, width * scale, scroll.clientHeight - 40);
+    $('#widthLabel').textContent = width + 'px';
+    if (bp !== app.bp) switchBreakpoint(bp, { keepWidth: true });
+  };
+  const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); release(); updateViewport(); };
+  document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+}
 function updateViewport() {
   const scroll = $('#canvasScroll'), width = deviceWidth(app.bp);
   const scale = canvas.setViewport(width, scroll.clientWidth - 48, scroll.clientHeight - 40);
   $('#widthLabel').textContent = width + 'px' + (scale < 1 ? ' · ' + Math.round(scale * 100) + '%' : '');
+  const range = rangeOf(doc().breakpoints, app.bp);
+  $('#widthLabel').title = (app.bp === 'desktop' ? 'Desktop' : doc().breakpoints.find(bp => bp.id === app.bp).name) + ': ' + range.min + (range.max === Infinity ? ' px and wider' : '–' + range.max + ' px') + '. Drag the handle beside the page to try other widths.';
   rulers.draw();
 }
 function renderPanels() {
@@ -269,7 +299,8 @@ async function publish() {
 
 document.addEventListener('click', event => {
   const bp = event.target.closest('[data-bp]');
-  if (bp && bp.closest('#devices')) { app.bp = bp.dataset.bp; renderChrome(); inspector.render(); layers.render(); rulers.load(); return; }
+  if (bp && bp.closest('#devices')) { switchBreakpoint(bp.dataset.bp); return; }
+  if (event.target.closest('#bpManage')) return breakpointManager.open();
   const toggle = event.target.closest('[data-pref]');
   if (toggle) {
     prefs[toggle.dataset.pref] = !prefs[toggle.dataset.pref]; savePrefs();
@@ -287,6 +318,7 @@ document.addEventListener('click', event => {
   if (event.target.closest('[data-reload]')) { try { localStorage.removeItem(draftKey()); } catch {} return location.reload(); }
 });
 $('#pageSelect').addEventListener('change', event => ctx.openPage(event.target.value));
+$('#widthHandle').addEventListener('pointerdown', widthDrag);
 $('#layersPanel').addEventListener('mouseover', event => canvas.hover(event.target.closest('.layer-row')?.dataset.id || null));
 $('#layersPanel').addEventListener('mouseleave', () => canvas.hover(null));
 new ResizeObserver(() => { if (app.loaded) updateViewport(); }).observe($('#canvasScroll'));
@@ -296,6 +328,7 @@ function onChange({ ids, reason }) {
   app.selection = app.selection.filter(id => doc().nodes[id]);
   if (app.selected && !doc().nodes[app.selected]) app.selected = app.selection[app.selection.length - 1] || null;
   if (!doc().pages.some(item => item.id === app.pageId)) app.pageId = 'home';
+  if (!bpIds().includes(app.bp)) { app.bp = 'desktop'; app.previewWidth = null; }
   canvas.render(doc(), page(), ids);
   canvas.select(app.selected, { also: app.selection });
   renderPanels(); renderChrome();

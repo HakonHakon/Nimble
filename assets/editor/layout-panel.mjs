@@ -170,6 +170,7 @@ export function createLayoutPanel(ctx) {
     const where = index.get(node.id);
     let html = '';
     if (node.children) html += containerHtml(node);
+    if (node.children?.length > 1 && st().bp === 'desktop') html += '<div class="lp-row"><div class="lp-head"><span class="lp-label">Reading order</span></div><button class="chip" data-arrange="sortByPosition">Sort layers by position</button><p class="lp-hint">Screen readers, and stacks on smaller screens, follow the Layers order.</p></div>';
     if (where?.parent) html += placementHtml(node, doc.nodes[where.parent]);
     return '<div class="lp">' + (html || '<p class="hint">Sections fill the page width. Select an element inside to position it.</p>') + '</div>';
   }
