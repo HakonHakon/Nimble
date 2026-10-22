@@ -142,3 +142,31 @@ document.querySelectorAll('[data-tabs]').forEach(tabs => {
     open(dialog);
   });
 })();
+
+// Menus: the hamburger opens a full-screen panel; sub-menu buttons open drop-downs on touch screens.
+document.querySelectorAll('.t-menu').forEach(menu => {
+  const toggle = menu.querySelector(':scope > .menu-toggle');
+  const setOpen = open => {
+    menu.classList.toggle('is-open', open);
+    toggle?.setAttribute('aria-expanded', String(open));
+    toggle?.setAttribute('aria-label', open ? 'Close menu' : 'Menu');
+    document.documentElement.style.overflow = open ? 'hidden' : '';
+  };
+  toggle?.addEventListener('click', () => setOpen(!menu.classList.contains('is-open')));
+  menu.addEventListener('click', event => { if (event.target.closest('a') && menu.classList.contains('is-open')) setOpen(false); });
+  menu.addEventListener('keydown', event => { if (event.key === 'Escape' && menu.classList.contains('is-open')) { setOpen(false); toggle?.focus(); } });
+  menu.querySelectorAll('.sub-toggle').forEach(button => button.addEventListener('click', () => {
+    const item = button.parentElement, open = !item.classList.contains('is-open');
+    item.classList.toggle('is-open', open);
+    button.setAttribute('aria-expanded', String(open));
+  }));
+});
+
+// Headers with a scroll style get "is-scrolled" once the page has scrolled.
+(() => {
+  const headers = [...document.querySelectorAll('[data-scroll]')];
+  if (!headers.length) return;
+  const update = () => { for (const header of headers) header.classList.toggle('is-scrolled', scrollY > 8); };
+  addEventListener('scroll', update, { passive: true });
+  update();
+})();

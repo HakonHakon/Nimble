@@ -2,7 +2,7 @@
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { ADDABLE, TYPES, createNode, insertionTarget, newId, descendants, typeOfKind } from './tree.mjs';
 
-const KIND_ICONS = { heading: 'H', title: 'H1', 'text-list': '•≡', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭', 'button-outline': '▭', 'button-icon': '→', 'icon-button': '◉', 'shape-ellipse': '●', 'shape-blob': '⬮', 'line-vertical': '│', 'gallery-masonry': '▥', slideshow: '◧', popup: '❐', repeater: '▤' };
+const KIND_ICONS = { heading: 'H', title: 'H1', 'text-list': '•≡', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭', 'button-outline': '▭', 'button-icon': '→', 'icon-button': '◉', 'shape-ellipse': '●', 'shape-blob': '⬮', 'line-vertical': '│', 'gallery-masonry': '▥', slideshow: '◧', popup: '❐', repeater: '▤', 'menu-anchors': '⚓', 'embed-html': '</>', 'embed-map': '⌖', 'embed-site': '⧉' };
 
 export function createAddPanel(root, ctx) {
   let query = '';
@@ -70,12 +70,39 @@ function slug(text) {
   const base = text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
   return /^[a-z]/.test(base) ? base : 'page-' + (base || 'new');
 }
+const menuId = menu => { const ids = new Set(menu.flatMap(item => [item.id, ...(item.children || []).map(child => child.id)])); let id; do id = 'm-' + Math.random().toString(36).slice(2, 10); while (ids.has(id)); return id; };
+function linkSummary(doc, link) {
+  if (!link) return 'Drop-down title';
+  if (link.to === 'page') return 'Page: ' + (doc.pages.find(page => page.id === link.page)?.name || link.page);
+  if (link.to === 'anchor') return 'Section: ' + (doc.nodes[link.node]?.name || link.node);
+  return { url: link.href, asset: link.href, email: link.address, phone: link.number }[link.to] || '';
+}
+// The site menu: by default every page; customised, a list of pages and links with one level of drop-downs.
+function menuEditor(doc) {
+  if (!doc.menu) return '<h3>Site menu</h3><p class="hint">Menus show every page, in this order.</p><button class="btn btn-small" data-menu-customize>Customize the menu</button>';
+  const row = (item, path, child, first, last) => '<div class="menu-row' + (child ? ' is-child' : '') + '" data-menu-path="' + path + '"><input data-menu-label value="' + esc(item.label) + '" placeholder="' + esc(item.link?.to === 'page' ? doc.pages.find(page => page.id === item.link.page)?.name || '' : 'Label') + '" maxlength="80" aria-label="Menu label">'
+    + '<span class="ml-tools"><button type="button" class="icon-btn" data-menu-move="-1" aria-label="Move up"' + (first ? ' disabled' : '') + '>↑</button><button type="button" class="icon-btn" data-menu-move="1" aria-label="Move down"' + (last ? ' disabled' : '') + '>↓</button>'
+    + (child ? '<button type="button" class="icon-btn" data-menu-outdent aria-label="Move out of the drop-down">←</button>' : '<button type="button" class="icon-btn" data-menu-indent aria-label="Put under the item above"' + (first || item.children ? ' disabled' : '') + '>→</button>')
+    + '<button type="button" class="icon-btn" data-menu-remove aria-label="Remove from menu">×</button></span><small>' + esc(linkSummary(doc, item.link)) + '</small></div>';
+  const rows = doc.menu.map((item, i) => row(item, String(i), false, i === 0, i === doc.menu.length - 1) + (item.children || []).map((child, j) => row(child, i + '.' + j, true, j === 0, j === item.children.length - 1)).join('')).join('');
+  return '<h3>Site menu</h3><div class="menu-editor">' + (rows || '<p class="empty">The menu is empty.</p>') + '</div>'
+    + '<div class="menu-add"><select data-menu-add-page aria-label="Add a page to the menu"><option value="">Add a page…</option>' + doc.pages.map(page => '<option value="' + esc(page.id) + '">' + esc(page.name) + '</option>').join('') + '</select></div>'
+    + '<form class="menu-add menu-link-form"><input name="label" placeholder="Link label" maxlength="80" aria-label="Link label" required><input name="href" placeholder="https://…" aria-label="Link address" required spellcheck="false"><button class="btn btn-small">Add link</button></form>'
+    + '<button class="btn btn-small" data-menu-reset>Show all pages instead</button><p class="hint">Use → to put an item in the drop-down of the item above.</p>';
+}
 export function createPagesPanel(root, ctx) {
+  // Applies a change to a copy of the site menu and commits it.
+  function editMenu(mutate, label = 'Edit menu') {
+    const menu = structuredClone(ctx.state().doc.menu || []);
+    mutate(menu);
+    ctx.commit([{ path: ['menu'], value: menu }], { label });
+  }
   function render() {
     const { doc, page } = ctx.state();
     root.innerHTML = '<div class="panel-head"><h2 class="panel-title">Pages</h2></div><div class="page-list" role="list">'
       + doc.pages.map(item => '<button role="listitem" class="page-item' + (item.id === page.id ? ' active' : '') + '" data-page="' + esc(item.id) + '"><span>' + esc(item.name) + '</span><small>' + esc(item.path) + '</small></button>').join('')
       + '</div><form class="add-page"><input name="name" placeholder="New page name" aria-label="New page name" maxlength="120"><button class="btn btn-small">Add page</button></form>'
+      + menuEditor(doc)
       + '<h3>Page settings</h3><div class="page-settings">'
       + '<label>Name<input data-page-field="name" value="' + esc(page.name) + '" maxlength="120"></label>'
       + (page.id === 'home' ? '' : '<label>Address<input data-page-field="path" value="' + esc(page.path) + '" spellcheck="false"></label>')
@@ -84,12 +111,28 @@ export function createPagesPanel(root, ctx) {
       + '<label class="check"><input type="checkbox" data-page-field="showHeader"' + (page.showHeader ? ' checked' : '') + '>Show header</label>'
       + '<label class="check"><input type="checkbox" data-page-field="showFooter"' + (page.showFooter ? ' checked' : '') + '>Show footer</label>'
       + (page.id === 'home' ? '' : '<button class="btn btn-danger" data-delete-page>Delete page</button>') + '</div>';
-    if (!ctx.editable()) root.querySelectorAll('input,textarea,form button,[data-delete-page]').forEach(element => { element.disabled = true; });
+    if (!ctx.editable()) root.querySelectorAll('input,textarea,select,button:not([data-page])').forEach(element => { element.disabled = true; });
   }
   root.addEventListener('click', event => {
     const item = event.target.closest('[data-page]');
     if (item) return ctx.openPage(item.dataset.page);
-    if (event.target.closest('[data-delete-page]') && ctx.editable()) {
+    if (!ctx.editable()) return;
+    const { doc } = ctx.state();
+    if (event.target.closest('[data-menu-customize]')) return void ctx.commit([{ path: ['menu'], value: doc.pages.map((page, i) => ({ id: 'm-' + page.id.slice(0, 70) + '-' + i, label: '', link: { to: 'page', page: page.id } })) }], { label: 'Customize menu' });
+    if (event.target.closest('[data-menu-reset]')) return void ctx.commit([{ path: ['menu'], value: undefined }], { label: 'Menu shows all pages' });
+    const row = event.target.closest('[data-menu-path]');
+    if (row && event.target.closest('button')) {
+      const [i, j] = row.dataset.menuPath.split('.').map(Number), child = j !== undefined;
+      return editMenu(menu => {
+        const list = child ? menu[i].children : menu, at = child ? j : i;
+        const move = event.target.closest('[data-menu-move]');
+        if (move) { const to = at + Number(move.dataset.menuMove); [list[at], list[to]] = [list[to], list[at]]; }
+        if (event.target.closest('[data-menu-remove]')) { list.splice(at, 1); if (child && !list.length) delete menu[i].children; }
+        if (event.target.closest('[data-menu-indent]')) { const [moved] = menu.splice(i, 1); (menu[i - 1].children ||= []).push(moved); }
+        if (event.target.closest('[data-menu-outdent]')) { const [moved] = menu[i].children.splice(j, 1); if (!menu[i].children.length) delete menu[i].children; menu.splice(i + 1, 0, moved); }
+      });
+    }
+    if (event.target.closest('[data-delete-page]')) {
       const { doc, page } = ctx.state();
       if (!confirm('Delete the page “' + page.name + '”? Undo can bring it back.')) return;
       const removed = page.children.flatMap(id => descendants(doc, id));
@@ -101,15 +144,28 @@ export function createPagesPanel(root, ctx) {
     event.preventDefault();
     if (!ctx.editable()) return;
     const { doc } = ctx.state();
+    if (event.target.matches('.menu-link-form')) {
+      const label = event.target.elements.label.value.trim(), href = event.target.elements.href.value.trim();
+      if (!/^https?:\/\/\S+$/i.test(href)) return ctx.toast('Enter a web address that starts with https://');
+      return editMenu(menu => menu.push({ id: menuId(menu), label, link: { to: 'url', href, newTab: true } }), 'Add menu link');
+    }
     const name = event.target.elements.name.value.trim();
     if (!name) return;
     let id = slug(name), counter = 1;
     while (doc.pages.some(item => item.id === id || item.path === '/' + id)) id = slug(name) + '-' + (++counter);
     const sectionId = newId(doc, 'section');
     const section = { id: sectionId, type: 'section', name: 'Section', children: [], layout: { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['60px', '35px', '60px', '35px'], contentWidth: '1022px' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } } };
-    if (ctx.commit([{ path: ['nodes', sectionId], value: section }, { path: ['pages'], value: [...doc.pages, { id, name, path: '/' + id, children: [sectionId], showHeader: true, showFooter: true }] }], { label: 'Add page' })) ctx.openPage(id);
+    // A customised menu gets the new page too, as Wix does.
+    const menuOps = doc.menu ? [{ path: ['menu'], value: [...doc.menu, { id: menuId(doc.menu), label: '', link: { to: 'page', page: id } }] }] : [];
+    if (ctx.commit([{ path: ['nodes', sectionId], value: section }, { path: ['pages'], value: [...doc.pages, { id, name, path: '/' + id, children: [sectionId], showHeader: true, showFooter: true }] }, ...menuOps], { label: 'Add page' })) ctx.openPage(id);
   });
   root.addEventListener('change', event => {
+    if (!ctx.editable()) return;
+    if (event.target.matches('[data-menu-add-page]') && event.target.value) { const page = event.target.value; return editMenu(menu => menu.push({ id: menuId(menu), label: '', link: { to: 'page', page } }), 'Add page to menu'); }
+    if (event.target.matches('[data-menu-label]')) {
+      const [i, j] = event.target.closest('[data-menu-path]').dataset.menuPath.split('.').map(Number), value = event.target.value.trim();
+      return editMenu(menu => { (j === undefined ? menu[i] : menu[i].children[j]).label = value; }, 'Rename menu item');
+    }
     const field = event.target.dataset.pageField;
     if (!field || !ctx.editable()) return;
     const { doc, page } = ctx.state();

@@ -294,3 +294,12 @@ code{background:var(--soft);padding:2px 6px;border-radius:5px}
 .ml-tools{display:flex;gap:2px}.ml-tools .icon-btn{width:24px;height:26px;padding:0}
 /* Phase 8c: interactive elements */
 .panel-row{grid-template-columns:22px minmax(0,1fr) auto}.panel-index{color:var(--muted);font-weight:600;text-align:center}
+/* Phase 8d: navigation and embeds */
+.social-row{display:grid;grid-template-columns:86px minmax(0,1fr) minmax(0,1.4fr) 26px;gap:4px;align-items:center}
+.social-row select,.social-row input{min-width:0}
+.menu-editor{display:grid;gap:4px;margin:6px 0}
+.menu-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;align-items:center;padding:4px;border:1px solid var(--line);border-radius:7px;background:#fff}
+.menu-row.is-child{margin-left:18px}
+.menu-row input{min-width:0}
+.menu-row small{grid-column:1/-1;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;margin-top:4px}

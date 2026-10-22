@@ -155,6 +155,13 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
         if (isset($props['lineStyle'])) $rules[$selector . '.t-divider'][$side . '-style'] = $props['lineStyle'];
     }
     if ($node['type'] === 'icon' && isset($props['weight'])) $rules[$selector . ' svg']['stroke-width'] = nimble_v2_num_string($props['weight']);
+    if ($node['type'] === 'social' && isset($props['size'])) { $rules[$selector . '>a']['width'] = $props['size']; $rules[$selector . '>a']['height'] = $props['size']; }
+    if ($node['type'] === 'menu' && nimble_v2_uses_hamburger($node)) {
+        // Hamburger: the links become a full-screen panel opened by the toggle button.
+        $hamburger = ($style['menuMode'] ?? null) === 'hamburger';
+        $rules[$selector . '>.menu-toggle']['display'] = $hamburger ? 'inline-flex' : 'none';
+        $rules[$selector . ':not(.is-open)>:not(.menu-toggle)']['display'] = $hamburger ? 'none' : 'revert';
+    }
     if ($node['type'] === 'menu') {
         $rules[$selector]['flex-direction'] = ($props['orientation'] ?? null) === 'vertical' ? 'column' : 'row';
         if (isset($props['activeColor'])) $rules[$selector . ' a[aria-current]']['color'] = nimble_v2_color_value($props['activeColor']);
@@ -271,6 +278,32 @@ function nimble_v2_link_attributes(array $site, array $link): string
     return ' href="' . nimble_v2_e(nimble_v2_link_href($site, $link)) . '"' . (!empty($link['newTab']) ? ' target="_blank" rel="noopener noreferrer"' : '');
 }
 const NIMBLE_V2_FILTERS = ['none' => 'none', 'grayscale' => 'grayscale(1)', 'sepia' => 'sepia(0.8)', 'blur' => 'blur(3px)', 'brighten' => 'brightness(1.2)', 'darken' => 'brightness(0.75)', 'contrast' => 'contrast(1.35)', 'saturate' => 'saturate(1.6)', 'vintage' => 'sepia(0.35) contrast(1.1) saturate(0.8) brightness(1.05)'];
+// Same output as JavaScript's encodeURIComponent.
+function nimble_v2_uri_component(string $value): string { return strtr(rawurlencode($value), ['%21' => '!', '%2A' => '*', '%27' => "'", '%28' => '(', '%29' => ')']); }
+function nimble_v2_uses_hamburger(array $node): bool
+{
+    foreach ($node['style'] ?? [] as $values) if (($values['menuMode'] ?? null) === 'hamburger') return true;
+    return false;
+}
+// Menu items: the site menu, or all pages when the site has no menu; "sections" lists named sections of the page.
+function nimble_v2_menu_items(array $site, array $page, array $props): array
+{
+    if (($props['source'] ?? null) === 'sections') {
+        $items = [];
+        foreach ($page['children'] as $id) if (($site['nodes'][$id]['name'] ?? '') !== '' && empty($site['nodes'][$id]['props']['popup'])) $items[] = ['label' => $site['nodes'][$id]['name'], 'link' => ['to' => 'anchor', 'node' => $id]];
+        return $items;
+    }
+    if (isset($site['menu'])) return $site['menu'];
+    return array_map(static fn($item) => ['label' => $item['name'], 'link' => ['to' => 'page', 'page' => $item['id']]], $site['pages']);
+}
+function nimble_v2_menu_link(array $site, array $page, array $item): string
+{
+    $label = $item['label'] ?? '';
+    if ($label === '' && ($item['link']['to'] ?? null) === 'page') foreach ($site['pages'] as $entry) if ($entry['id'] === $item['link']['page']) $label = $entry['name'];
+    if ($label === '') $label = 'Link';
+    $current = ($item['link']['to'] ?? null) === 'page' && $item['link']['page'] === $page['id'] && !isset($item['link']['anchor']);
+    return '<a' . ($current ? ' aria-current="page"' : '') . nimble_v2_link_attributes($site, $item['link']) . '>' . nimble_v2_e($label) . '</a>';
+}
 // Plain grids keep the original <img> markup; captions, lightbox and other layouts use figures.
 function nimble_v2_gallery_figures(array $props): bool
 {
@@ -367,7 +400,12 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
         if ($videos) $inner .= '<span class="bg-overlay" aria-hidden="true"></span>';
         if ($node['type'] === 'tabs' || $node['type'] === 'accordion') return nimble_v2_panels_html($site, $node, $page, $options, $attributes, $inner);
         foreach ($node['children'] as $child) $inner .= nimble_v2_render_node($site, $child, $page, $options);
-        $html = '<' . $tag . $attributes . '>' . $inner . '</' . $tag . '>';
+        // The site header can stick, overlay the first section, and change style once the page scrolls.
+        $mode = $props['headerMode'] ?? 'normal'; $scroll = $props['scrollStyle'] ?? 'none';
+        $headerAttributes = $node['id'] === ($site['header'] ?? null) && ($mode !== 'normal' || $scroll !== 'none')
+            ? str_replace(' t-section"', ' t-section' . (['sticky' => ' hdr-sticky', 'overlay' => ' hdr-overlay', 'overlay-sticky' => ' hdr-overlay hdr-fixed'][$mode] ?? '') . '"', $attributes) . ($scroll !== 'none' ? ' data-scroll="' . $scroll . '"' : '')
+            : $attributes;
+        $html = '<' . $tag . $headerAttributes . '>' . $inner . '</' . $tag . '>';
         // A popup section is a modal dialog, opened by links to the section or when the page loads.
         if ($node['type'] === 'section' && !empty($props['popup'])) return '<dialog class="popup" id="popup-' . nimble_v2_e($node['id']) . '" data-popup="' . nimble_v2_e($node['id']) . '"' . (($props['popupOpen'] ?? null) === 'load' ? ' data-open="load" data-delay="' . ($props['popupDelay'] ?? 0) . '"' : '') . ' aria-label="' . nimble_v2_e(($node['name'] ?? '') !== '' ? $node['name'] : 'Popup') . '">' . $html . '<button type="button" class="popup-close" aria-label="Close">×</button></dialog>';
         return $html;
@@ -426,8 +464,33 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
     if ($node['type'] === 'divider') return ($props['orientation'] ?? null) === 'vertical' ? '<hr' . str_replace(' t-divider"', ' t-divider is-vertical"', $attributes) . ' aria-orientation="vertical">' : '<hr' . $attributes . '>';
     if ($node['type'] === 'menu') {
         $links = '';
-        foreach ($site['pages'] as $item) $links .= '<a' . ($item['id'] === $page['id'] ? ' aria-current="page"' : '') . ' href="' . nimble_v2_e(nimble_v2_page_href($site, $item['id'])) . '">' . nimble_v2_e($item['name']) . '</a>';
-        return '<nav' . $attributes . ' aria-label="Main navigation">' . $links . '</nav>';
+        foreach (nimble_v2_menu_items($site, $page, $props) as $item) {
+            if (empty($item['children'])) { $links .= nimble_v2_menu_link($site, $page, $item); continue; }
+            $title = isset($item['link']) ? nimble_v2_menu_link($site, $page, $item) : '<span class="menu-title">' . nimble_v2_e($item['label']) . '</span>';
+            $links .= '<div class="menu-sub">' . $title . '<button type="button" class="sub-toggle" aria-expanded="false" aria-label="Show ' . nimble_v2_e(($item['label'] ?? '') !== '' ? $item['label'] : 'submenu') . ' links">' . nimble_v2_icon_svg('chevron-down') . '</button><div class="submenu">';
+            foreach ($item['children'] as $child) $links .= nimble_v2_menu_link($site, $page, $child);
+            $links .= '</div></div>';
+        }
+        $toggle = nimble_v2_uses_hamburger($node) ? '<button type="button" class="menu-toggle" aria-expanded="false" aria-label="Menu">' . nimble_v2_icon_svg('menu') . '</button>' : '';
+        return '<nav' . $attributes . ' aria-label="' . (($props['source'] ?? null) === 'sections' ? 'Page sections' : 'Main navigation') . '">' . $toggle . $links . '</nav>';
+    }
+    if ($node['type'] === 'social') {
+        $html = '<div' . $attributes . '>';
+        foreach ($props['items'] ?? [] as $item) {
+            $name = nimble_v2_e($item['label'] !== '' ? $item['label'] : $item['url']);
+            $html .= '<a href="' . nimble_v2_e($item['url']) . '"' . (preg_match('/^https?:/i', $item['url']) ? ' target="_blank" rel="noopener noreferrer"' : '') . ' aria-label="' . $name . '" title="' . $name . '">' . nimble_v2_icon_svg($item['icon']) . '</a>';
+        }
+        return $html . '</div>';
+    }
+    if ($node['type'] === 'embed') {
+        $kind = $props['kind'] ?? null;
+        $title = nimble_v2_e(($props['title'] ?? '') !== '' ? $props['title'] : 'Embedded content');
+        if ($kind === 'map') $src = ($props['address'] ?? '') !== '' ? 'https://www.google.com/maps?q=' . nimble_v2_uri_component($props['address']) . '&z=' . ($props['zoom'] ?? 14) . '&output=embed' : '';
+        elseif ($kind === 'website') $src = preg_match('#^https://#i', $props['url'] ?? '') ? $props['url'] : '';
+        else $src = ($props['html'] ?? '') !== '' ? '/embed/' . $node['id'] . '.html' . (!empty($options['draftEmbeds']) ? '?draft=1' : '') : '';
+        // HTML embeds run in a sandboxed frame served from /embed/ with its own opaque origin.
+        $sandbox = $kind === 'map' ? '' : ' sandbox="allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox' . ($kind === 'website' ? ' allow-same-origin' : '') . '"';
+        return '<div' . $attributes . '>' . ($src !== '' ? '<iframe src="' . nimble_v2_e($src) . '" title="' . $title . '" loading="lazy" referrerpolicy="no-referrer-when-downgrade"' . $sandbox . ($kind === 'map' ? ' allowfullscreen' : '') . '></iframe>' : '<p class="muted">Add ' . ($kind === 'map' ? 'an address' : ($kind === 'website' ? 'an https:// address' : 'HTML code')) . ' in the Content tab.</p>') . '</div>';
     }
     return '<div' . $attributes . ' aria-hidden="true"></div>';
 }
@@ -441,7 +504,7 @@ function nimble_v2_page_roots(array $site, array $page): array
 }
 function nimble_v2_render_page(array $site, array $page, array $options = []): string
 {
-    $settings = ['year' => $options['year'] ?? (int)gmdate('Y')];
+    $settings = ['year' => $options['year'] ?? (int)gmdate('Y')] + (!empty($options['draftEmbeds']) ? ['draftEmbeds' => true] : []);
     $e = 'nimble_v2_e';
     $header = isset($site['header']) && $page['showHeader'] ? nimble_v2_render_node($site, $site['header'], $page, $settings) : '';
     $footer = isset($site['footer']) && $page['showFooter'] ? nimble_v2_render_node($site, $site['footer'], $page, $settings) : '';

@@ -364,6 +364,18 @@ function nimble_v2_node_props(string $type, mixed $input, array $ctx): array
         elseif ($kind === 'media') { if ($source === '') continue; $result = nimble_v2_safe_url($source); if ($result === '') nimble_error('Use a valid HTTP(S) URL or local path for ' . $key . '.'); }
         elseif ($kind === 'video') { if ($source === '') continue; if (!nimble_v2_video_source($source)) nimble_error('Videos must be MP4/WebM files or YouTube/Vimeo URLs.'); $result = nimble_v2_safe_url($source); }
         elseif ($kind === 'audio') { if ($source === '') continue; $result = nimble_v2_audio_source($source); if ($result === null) nimble_error('Audio must be an MP3, M4A, OGG or WAV file.'); }
+        elseif ($kind === 'socialList') {
+            if (!nimble_v2_is_list($source) || count($source) > $spec['limits']['socialItems']) nimble_error('Use no more than ' . $spec['limits']['socialItems'] . ' social links.');
+            $result = [];
+            foreach ($source as $entry) {
+                if (!nimble_v2_is_object($entry)) nimble_error('Social links need a URL.');
+                $url = nimble_v2_social_url($entry['url'] ?? null);
+                if ($url === '') nimble_error('Social links need a web address, mailto: or tel: link.');
+                $icon = ($entry['icon'] ?? null) === null ? 'link' : nimble_v2_value('icon', $entry['icon'], $ctx);
+                if ($icon === null) nimble_error('Choose an icon from the icon set.');
+                $result[] = ['label' => trim(nimble_v2_text($entry['label'] ?? '', 80, 'Social link label')), 'url' => $url, 'icon' => $icon];
+            }
+        }
         elseif ($kind === 'textList') {
             if (!nimble_v2_is_list($source) || count($source) > $spec['limits']['galleryImages']) nimble_error('Use no more than ' . $spec['limits']['galleryImages'] . ' captions.');
             $result = array_map(static fn($item) => nimble_v2_text($item ?? '', 300, 'Caption'), $source);
@@ -490,6 +502,38 @@ function nimble_v2_custom_font(array $font): array
     if (!isset($result['src']) && !isset($result['files'])) nimble_error('Fonts must be a system font or an uploaded font file.');
     return $result;
 }
+// The site menu: items with a label and a link, one level of sub-items. Items whose link points to
+// a deleted page or element are dropped. Without a menu, menus list all pages.
+function nimble_v2_menu(mixed $input, array $ctx): array
+{
+    if (!nimble_v2_is_list($input)) nimble_error('The site menu must be a list.');
+    $limits = nimble_v2_spec()['limits'];
+    $ids = []; $count = 0;
+    $item = function (mixed $source, int $depth) use (&$item, &$ids, &$count, $ctx, $limits): ?array {
+        if (!nimble_v2_is_object($source) || !is_string($source['id'] ?? null) || !nimble_v2_match('id', $source['id']) || isset($ids[$source['id']])) nimble_error('Menu items need unique IDs.');
+        $ids[$source['id']] = true;
+        if (++$count > $limits['menuItems']) nimble_error('Use no more than ' . $limits['menuItems'] . ' menu items.');
+        $target = ($source['link'] ?? null) === null ? null : nimble_v2_link($source['link'], $ctx);
+        $result = ['id' => $source['id'], 'label' => trim(nimble_v2_text($source['label'] ?? '', 80, 'Menu label'))];
+        if ($target !== null) $result['link'] = $target;
+        if (($source['children'] ?? null) !== null) {
+            if ($depth > 0 || !nimble_v2_is_list($source['children'])) nimble_error('Menu items can have one level of sub-items.');
+            $children = array_values(array_filter(array_map(static fn($child) => $item($child, 1), $source['children'])));
+            if ($children) $result['children'] = $children;
+        }
+        // An item without a link is kept only as a dropdown title for its sub-items.
+        if ($target === null && !isset($result['children'])) return null;
+        if ($target === null && $result['label'] === '') nimble_error('Dropdown titles need a label.');
+        return $result;
+    };
+    return array_values(array_filter(array_map(static fn($source) => $item($source, 0), $input)));
+}
+function nimble_v2_social_url(mixed $value): string
+{
+    if (!is_string($value)) return '';
+    if (preg_match('/^mailto:[^\s<>"\']{3,254}$/i', $value) || preg_match('/^tel:\+?[0-9() -]{3,30}$/i', $value)) return $value;
+    return nimble_v2_safe_url($value);
+}
 function nimble_v2_breakpoints(mixed $input): array
 {
     $spec = nimble_v2_spec();
@@ -587,10 +631,12 @@ function nimble_v2_normalize(array $input): array
     $nodes = [];
     foreach ($infos as $id => $info) $nodes[(string)$id] = nimble_v2_node((string)$id, $nodesIn[$id], $info, $ctx);
     foreach ([$header, $footer] as $id) if ($id !== null && !empty($nodes[$id]['props']['popup'])) nimble_error('Headers and footers cannot be popups.');
+    $menu = ($input['menu'] ?? null) === null ? null : nimble_v2_menu($input['menu'], $ctx);
 
     $output = ['version' => 2, 'site' => $site, 'design' => $design, 'breakpoints' => $breakpoints, 'assets' => $assets];
     if ($header !== null) $output['header'] = $header;
     if ($footer !== null) $output['footer'] = $footer;
+    if ($menu !== null) $output['menu'] = $menu;
     $output['pages'] = $pages;
     // An empty PHP array would encode as [] — the element map must stay a JSON object.
     $output['nodes'] = $nodes ?: new ArrayObject();

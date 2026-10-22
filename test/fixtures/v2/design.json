@@ -14,9 +14,24 @@
       { "id": "empty", "name": "  Card  ", "type": "container" }
     ]
   },
-  "pages": [ { "id": "home", "name": "Home", "children": ["hero", "plain", "promo"] } ],
+  "header": "top",
+  "menu": [
+    { "id": "m-home", "label": "", "link": { "to": "page", "page": "home" } },
+    { "id": "m-more", "label": "More & more", "children": [ { "id": "m-ext", "label": "Docs", "link": { "to": "url", "href": "https://example.com/docs", "newTab": true } }, { "id": "m-gone", "label": "Gone", "link": { "to": "page", "page": "missing" } } ] },
+    { "id": "m-dead", "label": "Dead", "link": { "to": "page", "page": "missing" } },
+    { "id": "m-about", "label": "About", "link": { "to": "page", "page": "about" }, "children": [ { "id": "m-promo", "label": "Offer", "link": { "to": "anchor", "node": "promo" } } ] }
+  ],
+  "pages": [ { "id": "home", "name": "Home", "children": ["hero", "plain", "promo"] }, { "id": "about", "name": "About", "children": [] } ],
   "nodes": {
-    "hero": { "type": "section", "children": ["title", "cta"],
+    "top": { "type": "section", "tag": "header", "props": { "headerMode": "overlay-sticky", "scrollStyle": "solid" }, "children": ["nav", "anchors", "follow", "page-embed"] },
+    "nav": { "type": "menu", "style": { "mobile": { "menuMode": "hamburger" }, "tablet": { "menuMode": "inline" } } },
+    "anchors": { "type": "menu", "props": { "source": "sections", "orientation": "vertical" } },
+    "follow": { "type": "social", "props": { "size": "28px", "items": [ { "label": "Email", "url": "mailto:hi@example.com", "icon": "mail" }, { "url": "https://example.com/u/nimble", "icon": "globe" }, { "label": "Call", "url": "tel:+47 123 45 678" } ] } },
+    "page-embed": { "type": "embed", "props": { "kind": "html", "html": "<script>alert(1)</script><b>Widget</b>", "title": "Widget" } },
+    "map-embed": { "type": "embed", "props": { "kind": "map", "address": "Storgata 1, Oslo (it's here!)", "zoom": 15 } },
+    "site-embed": { "type": "embed", "props": { "kind": "website", "url": "https://example.com/calendar?a=1&b=2" } },
+    "bad-embed": { "type": "embed", "props": { "kind": "website", "url": "http://insecure.example" } },
+    "hero": { "type": "section", "name": "Welcome", "children": ["title", "cta"],
       "style": {
         "desktop": { "background": { "kind": "video", "src": "/uploads/loop.mp4", "poster": "/uploads/poster.jpg", "overlay": "#00000066", "color": "#101020" }, "scrollEffect": "parallax" },
         "tablet": { "background": { "kind": "image", "src": "/uploads/still.jpg", "focal": [30, 75.5], "overlay": "#00000040" }, "scrollEffect": "reveal" },
@@ -28,7 +43,7 @@
       { "t": "ul", "lineHeight": 2, "items": [ [ { "text": "One", "highlight": "@brand" } ], [ { "text": "Two", "size": "1.2em" } ] ] }
     ] }, "hover": { "color": "@brand", "duration": 400 }, "style": { "desktop": { "blendMode": "difference" } } },
     "cta": { "type": "button", "props": { "label": "Go" }, "hover": { "background": { "kind": "gradient", "angle": 90, "stops": [ { "color": "@brand", "at": 0 }, { "color": "#ff00aa", "at": 100 } ] }, "borderColor": "#000", "shadow": [ { "y": "8px", "blur": "24px", "color": "#00000040" } ], "opacity": 0.9, "scale": 1.05, "translateY": "-2px" }, "place": { "desktop": { "rotate": 3 } } },
-    "plain": { "type": "section", "hover": { "duration": 0 }, "children": ["star", "linked-icon", "icon-button", "icon-only", "vline", "hline", "g-captions", "g-masonry", "g-slider", "song", "photo", "faq", "info-tabs"] },
+    "plain": { "type": "section", "hover": { "duration": 0 }, "children": ["star", "linked-icon", "icon-button", "icon-only", "vline", "hline", "g-captions", "g-masonry", "g-slider", "song", "photo", "faq", "info-tabs", "map-embed", "site-embed", "bad-embed"] },
     "faq": { "type": "accordion", "props": { "firstOpen": true, "activeColor": "@brand" }, "children": ["faq-1", "faq-2"] },
     "faq-1": { "type": "container", "name": "What is it?", "children": ["faq-1-text"] },
     "faq-1-text": { "type": "text", "props": { "doc": [ { "t": "p", "c": [ { "text": "A website builder." } ] } ] } },

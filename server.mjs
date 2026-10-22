@@ -150,7 +150,7 @@ function headers(res, nonce = '') {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'" + (nonce ? " 'nonce-" + nonce + "'" : '') + "; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'" + (nonce ? " 'nonce-" + nonce + "'" : '') + "; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
   if (production) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
 }
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -458,11 +458,24 @@ const server = http.createServer(async (req, res) => {
       audit(auth.user.id, 'site_published', { revision: row.revision, releaseId: result.releaseId });
       return send(res, 200, result);
     }
+    // Custom HTML embeds: served on their own URL with a sandboxing CSP, so the code runs in an opaque
+    // origin. ?draft=1 shows the saved draft to signed-in users (editor and preview).
+    const embed = pathname.match(/^\/embed\/([a-z][a-z0-9_-]{0,79})\.html$/);
+    if (embed && (method === 'GET' || method === 'HEAD')) {
+      let source;
+      if (url.searchParams.get('draft')) { requireAccess(req, 'view'); source = normalizeSite(JSON.parse(siteRow().document_json)); }
+      else source = (await currentRelease(published))?.site;
+      const node = source?.version === 2 ? source.nodes[embed[1]] : null;
+      if (!node || node.type !== 'embed' || (node.props?.kind || 'html') !== 'html' || !node.props?.html) throw problem(404, 'Not found.');
+      res.setHeader('Content-Security-Policy', "sandbox allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox; frame-ancestors 'self'");
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      return send(res, 200, '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0}</style></head><body>' + node.props.html + '</body></html>', 'text/html; charset=utf-8');
+    }
     if (pathname === '/api/preview' && method === 'POST') {
       requireAccess(req, 'view', true);
       const body = await readBody(req), document = normalizeSite(body.site);
       const page = document.pages.find(page => page.id === body.pageId) || document.pages[0];
-      return send(res, 200, pageHtml(document, page), 'text/html; charset=utf-8');
+      return send(res, 200, pageHtml(document, page, { draftEmbeds: true }), 'text/html; charset=utf-8');
     }
     if (pathname === '/api/admin/users' && method === 'GET') {
       requireAccess(req, 'users');

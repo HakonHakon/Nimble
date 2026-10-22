@@ -179,7 +179,7 @@ function same_origin(): void
 function security_headers(): void
 {
     header('X-Content-Type-Options: nosniff'); header('X-Frame-Options: DENY'); header('Referrer-Policy: strict-origin-when-cross-origin'); header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     if (cfg('production', true)) header('Strict-Transport-Security: max-age=31536000');
 }
 function json_response(int $status, array $body): never
@@ -361,7 +361,18 @@ try {
     if ($path === '/api/publish' && $method === 'POST') {
         $auth = require_access('publish', true); $body = request_body(10000); $row = db_transaction(function () use ($body): array { $row = site_row(true); if (!$row) nimble_error('Owner setup is incomplete.', 503); if ((int)($body['revision'] ?? 0) !== (int)$row['revision']) nimble_error('Save and load the latest draft before publishing.', 409); db()->prepare("UPDATE sites SET published_json=document_json,published_revision=revision,published_at=? WHERE id='nimble'")->execute([timestamp()]); return site_row() ?? $row; }); audit((int)$auth['user']['id'], 'site_published', ['revision' => (int)$row['revision']]); json_response(200, ['ok' => true, 'url' => cfg('public_url') . '/']);
     }
-    if ($path === '/api/preview' && $method === 'POST') { require_access('view', true); $body = request_body((int)cfg('max_document_bytes', 2000000)); $document = nimble_normalize($body['site'] ?? []); $page = $document['pages'][0]; foreach ($document['pages'] as $candidate) if (($candidate['id'] ?? '') === ($body['pageId'] ?? '')) $page = $candidate; html_response(nimble_render_page($document, $page)); }
+    if ($path === '/api/preview' && $method === 'POST') { require_access('view', true); $body = request_body((int)cfg('max_document_bytes', 2000000)); $document = nimble_normalize($body['site'] ?? []); $page = $document['pages'][0]; foreach ($document['pages'] as $candidate) if (($candidate['id'] ?? '') === ($body['pageId'] ?? '')) $page = $candidate; html_response(nimble_render_page($document, $page, ['draftEmbeds' => true])); }
+    // Custom HTML embeds: served on their own URL with a sandboxing CSP, so the code runs in an opaque
+    // origin. ?draft=1 shows the saved draft to signed-in users (editor and preview).
+    if (preg_match('#^/embed/([a-z][a-z0-9_-]{0,79})\.html$#', $path, $match) && in_array($method, ['GET', 'HEAD'], true)) {
+        if (!empty($_GET['draft'])) { require_access('view'); $row = site_row(); $source = $row ? nimble_normalize(json_decode($row['document_json'], true)) : null; }
+        else $source = published_site();
+        $node = ($source['version'] ?? null) === 2 ? ($source['nodes'][$match[1]] ?? null) : null;
+        if (!$node || $node['type'] !== 'embed' || ($node['props']['kind'] ?? 'html') !== 'html' || ($node['props']['html'] ?? '') === '') nimble_error('Not found.', 404);
+        header("Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox; frame-ancestors 'self'");
+        header('X-Frame-Options: SAMEORIGIN');
+        html_response('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0}</style></head><body>' . $node['props']['html'] . '</body></html>');
+    }
     if ($path === '/api/admin/users' && $method === 'GET') { require_access('users'); $rows = db()->query("SELECT u.id,u.name,u.email,u.created_at,m.role AS site_role FROM users u JOIN site_members m ON m.user_id=u.id AND m.site_id='nimble' ORDER BY u.id")->fetchAll(); json_response(200, ['users' => $rows]); }
     if ($path === '/api/admin/users' && $method === 'POST') { $auth = require_access('users', true); $body = request_body(10000); if (!in_array($body['role'] ?? '', ['admin', 'editor', 'viewer'], true)) nimble_error('Choose a valid role.'); $user = db_transaction(function () use ($body, $auth): array { $account = create_user($body, $body['role'] === 'admin' ? 'admin' : 'user'); db()->prepare('INSERT INTO site_members(site_id,user_id,role,created_at) VALUES(?,?,?,?)')->execute(['nimble', $account['id'], $body['role'], timestamp()]); audit((int)$auth['user']['id'], 'user_created', ['userId' => $account['id']]); return $account; }); json_response(201, ['user' => $user]); }
     if (preg_match('#^/api/admin/users/([0-9]+)(/reset-password)?$#', $path, $match) && in_array($method, ['PATCH', 'DELETE', 'POST'], true)) {

@@ -6,7 +6,8 @@ export const TYPES = {
   image: { label: 'Image', icon: '▨' }, button: { label: 'Button', icon: '⬭' }, video: { label: 'Video', icon: '▶' },
   gallery: { label: 'Gallery', icon: '▦' }, form: { label: 'Contact form', icon: '✉' }, shape: { label: 'Shape', icon: '◆' },
   spacer: { label: 'Spacer', icon: '↕' }, divider: { label: 'Line', icon: '―' }, menu: { label: 'Menu', icon: '☰' }, icon: { label: 'Icon', icon: '★' },
-  audio: { label: 'Audio', icon: '♪' }, tabs: { label: 'Tabs', icon: '⊟' }, accordion: { label: 'Accordion', icon: '≡' }
+  audio: { label: 'Audio', icon: '♪' }, tabs: { label: 'Tabs', icon: '⊟' }, accordion: { label: 'Accordion', icon: '≡' },
+  embed: { label: 'Embed', icon: '⧉' }, social: { label: 'Social links', icon: '@' }
 };
 export const isContainer = type => !!spec.nodeTypes[type]?.container;
 export const isRoot = type => !!spec.nodeTypes[type]?.root;
@@ -98,9 +99,11 @@ export const ADDABLE = [
   ['shape', 'Rectangle', 'Shapes and icons', 'box square shape'], ['shape-ellipse', 'Circle', 'Shapes and icons', 'ellipse round shape'], ['shape-blob', 'Blob', 'Shapes and icons', 'organic shape'], ['icon', 'Icon', 'Shapes and icons', 'symbol glyph svg'],
   ['divider', 'Horizontal line', 'Shapes and icons', 'divider rule separator'], ['line-vertical', 'Vertical line', 'Shapes and icons', 'divider separator'], ['spacer', 'Spacer', 'Shapes and icons', 'gap space empty'],
   ['tabs', 'Tabs', 'Interactive', 'tabbed panels switch'], ['accordion', 'Accordion', 'Interactive', 'faq questions collapse expand'], ['popup', 'Popup', 'Interactive', 'lightbox modal dialog overlay newsletter'], ['repeater', 'Repeater (cards)', 'Interactive', 'list items cards services team'],
-  ['menu', 'Menu', 'Navigation', 'navigation nav links pages'], ['form', 'Contact form', 'Forms', 'contact message email']
+  ['menu', 'Menu', 'Navigation', 'navigation nav links pages hamburger'], ['menu-anchors', 'Anchor menu', 'Navigation', 'sections scroll one page links'], ['social', 'Social links', 'Navigation', 'social media follow icons'],
+  ['embed-html', 'HTML embed', 'Embeds', 'code widget iframe script custom'], ['embed-map', 'Map', 'Embeds', 'google maps location address'], ['embed-site', 'Website embed', 'Embeds', 'iframe page calendar booking'],
+  ['form', 'Contact form', 'Forms', 'contact message email']
 ];
-const KIND_TYPES = { heading: 'text', title: 'text', 'text-list': 'text', 'section-full': 'section', 'section-screen': 'section', 'section-columns': 'section', grid: 'container', 'grid-3': 'container', stack: 'container', 'stack-row': 'container', 'button-outline': 'button', 'button-icon': 'button', 'icon-button': 'button', 'shape-ellipse': 'shape', 'shape-blob': 'shape', 'line-vertical': 'divider', 'gallery-masonry': 'gallery', slideshow: 'gallery', popup: 'section', repeater: 'container' };
+const KIND_TYPES = { heading: 'text', title: 'text', 'text-list': 'text', 'section-full': 'section', 'section-screen': 'section', 'section-columns': 'section', grid: 'container', 'grid-3': 'container', stack: 'container', 'stack-row': 'container', 'button-outline': 'button', 'button-icon': 'button', 'icon-button': 'button', 'shape-ellipse': 'shape', 'shape-blob': 'shape', 'line-vertical': 'divider', 'gallery-masonry': 'gallery', slideshow: 'gallery', popup: 'section', repeater: 'container', 'menu-anchors': 'menu', 'embed-html': 'embed', 'embed-map': 'embed', 'embed-site': 'embed' };
 export const typeOfKind = kind => KIND_TYPES[kind] || kind;
 const LAYOUT_PRESETS = {
   'section-full': { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['60px', '35px', '60px', '35px'], contentWidth: 'auto' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } },
@@ -165,7 +168,11 @@ export function createNode(doc, kind) {
     shape: { type, props: { shape: kind === 'shape-ellipse' ? 'ellipse' : kind === 'shape-blob' ? 'blob' : 'rect' }, place: { desktop: { width: '120px', height: '120px' } }, style: { desktop: { background: { kind: 'color', color: '@accent' } } } },
     divider: kind === 'line-vertical' ? { type, props: { orientation: 'vertical' }, place: { desktop: { height: '120px' } }, style: { desktop: { color: '@line' } } } : { type, place: full, style: { desktop: { color: '@line' } } },
     spacer: { type, place: { desktop: { height: '40px' } } },
-    menu: { type, props: { orientation: 'horizontal', activeColor: '@accent' } },
+    menu: kind === 'menu-anchors'
+      ? { type, props: { orientation: 'horizontal', source: 'sections', activeColor: '@accent' } }
+      : { type, props: { orientation: 'horizontal', activeColor: '@accent' }, ...(doc.breakpoints.some(bp => bp.id === 'mobile') ? { style: { mobile: { menuMode: 'hamburger' } } } : {}) },
+    embed: { type, props: kind === 'embed-map' ? { kind: 'map', address: '', zoom: 14, title: 'Map' } : kind === 'embed-site' ? { kind: 'website', title: 'Embedded page' } : { kind: 'html', title: 'Custom code' }, place: { desktop: { width: '100%', height: kind === 'embed-html' ? '200px' : '400px' } } },
+    social: { type, props: { items: [{ label: 'Email', url: 'mailto:hello@example.com', icon: 'mail' }, { label: 'Website', url: 'https://example.com', icon: 'globe' }], size: '28px' }, style: { desktop: { color: '@ink' } } },
     form: { type, props: {}, place: { desktop: { width: '100%', maxWidth: '650px' } } }
   };
   const node = { id, ...nodes[type] };

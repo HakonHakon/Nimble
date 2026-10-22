@@ -101,7 +101,15 @@ test('PHP and Node reject the same invalid v2 documents', { skip }, async () => 
     mutate(doc => { doc.assets.push({ id: 'snd', kind: 'podcast', name: 'x', url: '/uploads/a.mp3' }); }),
     mutate(doc => { doc.nodes[doc.header].props = { popup: true }; }),
     mutate(doc => { doc.nodes.copy.place.desktop.pin = 'left'; }),
-    mutate(doc => { doc.nodes.copy.children.push('tb'); doc.nodes.tb = { type: 'tabs', props: { tabStyle: 'boxes' }, children: [] }; })
+    mutate(doc => { doc.nodes.copy.children.push('tb'); doc.nodes.tb = { type: 'tabs', props: { tabStyle: 'boxes' }, children: [] }; }),
+    mutate(doc => { doc.menu = [{ id: 'a', label: 'A', link: { to: 'page', page: 'home' } }, { id: 'a', label: 'B', link: { to: 'page', page: 'home' } }]; }),
+    mutate(doc => { doc.menu = [{ id: 'a', label: 'A', children: [{ id: 'b', label: 'B', link: { to: 'page', page: 'home' }, children: [] }] }]; }),
+    mutate(doc => { doc.menu = [{ id: 'a', label: '', children: [{ id: 'b', label: 'B', link: { to: 'page', page: 'home' } }] }]; }),
+    mutate(doc => { doc.menu = { items: [] }; }),
+    mutate(doc => { doc.nodes.copy.children.push('s'); doc.nodes.s = { type: 'social', props: { items: [{ url: 'javascript:alert(1)' }] } }; }),
+    mutate(doc => { doc.nodes.copy.children.push('s'); doc.nodes.s = { type: 'social', props: { items: [{ url: 'https://x.example', icon: 'logo' }] } }; }),
+    mutate(doc => { doc.nodes.copy.children.push('m'); doc.nodes.m = { type: 'menu', style: { desktop: { menuMode: 'drawer' } } }; }),
+    mutate(doc => { doc.nodes.copy.children.push('e'); doc.nodes.e = { type: 'embed', props: { kind: 'iframe' } }; })
   ];
   for (const [index, document] of cases.entries()) {
     const js = runJs(document), phpResult = runPhp(document);

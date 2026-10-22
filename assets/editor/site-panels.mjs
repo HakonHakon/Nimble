@@ -8,7 +8,7 @@ import { GOOGLE_FONTS } from '/assets/fonts.mjs';
 import { colorField, createColorPicker } from './color-picker.mjs';
 import { cascade } from './inspector.mjs';
 
-const TOP_KEYS = ['site', 'design', 'breakpoints', 'assets', 'header', 'footer', 'pages', 'nodes'];
+const TOP_KEYS = ['site', 'design', 'breakpoints', 'assets', 'header', 'footer', 'menu', 'pages', 'nodes'];
 const BUILT_IN = [
   { name: 'Studio', description: 'A polished starting point for a service business.', theme: 'purple', title: 'Make good things happen.' },
   { name: 'Build', description: 'Bold sections for a project, product or team.', theme: 'orange', title: 'Build it properly.' },

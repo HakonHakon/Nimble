@@ -109,6 +109,21 @@ The **Add** panel includes layout presets:
   - **Popup** is a page section shown as a modal dialog. It opens from links to it ("Section on this page") or once per visit after the page loads, with an optional delay. In the editor it is shown inline, with a dashed outline.
   - **Pin to screen** (Layout tab) keeps an element at the top or bottom of the screen while you scroll through its container, with an offset. It can differ per breakpoint.
   - **Repeater (cards)** adds a responsive grid of matching cards; duplicate a card to add more.
+- **Navigation:**
+  - **Site menu** (Pages panel): by default, menus list every page. *Customize the menu* lets you:
+    - reorder items, relabel them and remove them
+    - add pages, or links to other sites
+    - put an item into the drop-down of the item above (→)
+
+    New pages are added to a customised menu automatically. *Show all pages instead* goes back to the default. Drop-downs open on hover or focus, and with a button on touch screens.
+  - **Menu style** (Design tab, per breakpoint): inline links or a hamburger button that opens a full-screen menu. New menus use the hamburger on Mobile.
+  - **Anchor menu:** links to the named sections of the page. Name sections in Settings.
+  - **Header behaviour** (Content tab of the header): normal, sticky, over the first section, or over the first section and fixed. When the page scrolls the header can shrink, get a shadow, or get a solid background.
+  - **Social links:** a row of icon links (web, email or phone). Brand logos are not bundled, so choose from the icon set.
+- **Embeds:**
+  - *HTML embed*: your code runs on the published site and in Preview, in a sandboxed frame served from `/embed/<id>.html` with its own origin, so it cannot read the site or the visitor's session. The canvas shows a static preview without scripts.
+  - *Map*: Google Maps, from an address and a zoom level.
+  - *Website embed*: an https:// page in a frame.
 - **SVG images** can be uploaded in the Media panel like other images. They are shown through `<img>` and served with a sandboxing Content-Security-Policy, so scripts inside an SVG never run.
 
 ## Text editing

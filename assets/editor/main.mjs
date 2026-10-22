@@ -295,6 +295,7 @@ function showDialog(title, html) {
 function closeDialog() { $('#modalRoot').replaceChildren(); }
 async function preview(pageId = app.pageId) {
   try {
+    await flushSave().catch(() => {}); // HTML embeds in the preview load the saved draft
     const html = (await api('/api/preview', { method: 'POST', body: JSON.stringify({ site: doc(), pageId }) })).replace('<script defer src="/assets/public.js"></script>', '');
     showDialog('Preview', '<iframe class="preview-frame" title="Website preview" sandbox="allow-same-origin"></iframe>');
     const frame = $('.preview-frame'); frame.srcdoc = html;

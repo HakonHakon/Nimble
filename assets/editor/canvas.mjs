@@ -60,7 +60,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
       if (guide) { event.preventDefault(); onGuideDown(event, guide.dataset.guide, Number(guide.dataset.index)); }
     });
   }
-  const options = () => ({ year });
+  const options = () => ({ year, inlineEmbeds: true });
   function applyPanels() {
     const d = frameDoc();
     for (const [tabsId, childId] of shownTabs) {

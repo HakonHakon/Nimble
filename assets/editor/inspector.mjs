@@ -17,6 +17,7 @@ const LABELS = {
   src: 'Source', alt: 'Alt text', fit: 'Image fit', link: 'Link', label: 'Label', poster: 'Poster image', title: 'Title', controls: 'Show controls', autoplay: 'Autoplay (muted)',
   loop: 'Loop', muted: 'Muted', images: 'Images (one URL per line)', minItemWidth: 'Min item width', itemHeight: 'Item height', gap: 'Gap', submitLabel: 'Button label',
   note: 'Privacy note', shape: 'Shape', orientation: 'Orientation', activeColor: 'Current page colour', doc: 'Text',
+  headerMode: 'Header behaviour', scrollStyle: 'When the page scrolls', source: 'Links', menuMode: 'Menu style', kind: 'Type', html: 'HTML code', url: 'Address (https://)', address: 'Address', zoom: 'Zoom', items: 'Links', size: 'Icon size',
   popup: 'Show as a popup', popupOpen: 'Opens', popupDelay: 'Delay after load (s)', popupWidth: 'Popup width', tabAlign: 'Tab alignment', tabStyle: 'Tab style', multiple: 'Allow several open', firstOpen: 'First item open',
   filter: 'Filter', focal: 'Focal point', layout: 'Layout', lightbox: 'Open images full screen', interval: 'Seconds per slide', captions: 'Captions',
   icon: 'Icon', iconPosition: 'Icon position', hideLabel: 'Show icon only', thickness: 'Thickness', lineStyle: 'Line style', weight: 'Stroke width',
@@ -233,7 +234,15 @@ export function createInspector(root, ctx) {
   function propFields(node) {
     const schema = spec.nodeTypes[node.type].props || {};
     const props = node.props || {};
-    return Object.entries(schema).map(([key, type]) => {
+    const { doc } = ctx.state();
+    // Show only the properties that apply: header options on the header, popup options on page sections,
+    // and the fields for the chosen embed type.
+    const applies = key => {
+      if (node.type === 'section') return node.id === doc.header ? ['headerMode', 'scrollStyle'].includes(key) : node.id !== doc.footer && !['headerMode', 'scrollStyle'].includes(key);
+      if (node.type === 'embed') { const kind = props.kind || 'html'; return !({ html: ['url', 'address', 'zoom'], map: ['html', 'url'], website: ['html', 'address', 'zoom'] }[kind] || []).includes(key); }
+      return true;
+    };
+    return Object.entries(schema).filter(([key]) => applies(key)).map(([key, type]) => {
       const value = props[key];
       const head = '<div class="field-head"><label>' + esc(LABELS[key] || key) + '</label></div>';
       let body;
@@ -245,9 +254,24 @@ export function createInspector(root, ctx) {
       else if (type === 'mediaList') body = galleryControl(value, props.captions || []);
       else if (type === 'link') body = linkControl(key, value);
       else if (type === 'icon') body = iconPicker(value, node.type !== 'icon');
+      else if (type === 'socialList') body = socialControl(value || []);
       else body = control(type, value, undefined);
       return '<div class="field" data-group="props" data-key="' + key + '" data-type="' + esc(type) + '">' + head + body + '</div>';
     }).join('');
+  }
+  // Social links: icon, label and address per link.
+  function socialControl(items) {
+    const names = Object.keys(spec.icons);
+    return '<div class="ml">' + items.map((item, i) => '<div class="social-row" data-social="' + i + '"><select data-social-icon aria-label="Icon ' + (i + 1) + '">' + names.map(name => '<option' + (name === item.icon ? ' selected' : '') + '>' + name + '</option>').join('') + '</select>'
+      + '<input data-social-label value="' + esc(item.label) + '" placeholder="Label" maxlength="80" aria-label="Label ' + (i + 1) + '"><input data-social-url value="' + esc(item.url) + '" placeholder="https://… or mailto:" spellcheck="false" aria-label="Address ' + (i + 1) + '">'
+      + '<button type="button" class="icon-btn" data-social-remove aria-label="Remove link ' + (i + 1) + '">×</button></div>').join('')
+      + (items.length < spec.limits.socialItems ? '<button type="button" class="btn btn-small" data-social-add>+ Link</button>' : '') + '</div>';
+  }
+  function commitSocial(mutate) {
+    const { doc, selected } = ctx.state();
+    const items = structuredClone(doc.nodes[selected].props?.items || []);
+    mutate(items);
+    return ctx.commit([{ path: ['nodes', selected, 'props', 'items'], value: items }], { label: 'Social links' });
   }
   // Tabs and accordion panels: the children, titled by their names.
   function panelsControl(node) {
@@ -333,7 +357,7 @@ export function createInspector(root, ctx) {
     const bpName = doc.breakpoints.find(item => item.id === bp)?.name || bp;
     const summary = overrides.length && (tab === 'layout' || tab === 'design') ? '<div class="override-summary"><span>' + overrides.length + ' change' + (overrides.length === 1 ? '' : 's') + ' on ' + esc(bpName) + '</span><button class="link-button" data-reset-bp>Reset to inherited</button></div>' : '';
     if (tab === 'layout') body = summary + layoutPanel.render(node);
-    if (tab === 'design') body = presetBar(node) + summary + responsiveFields('style', spec.style, node, Object.keys(spec.style).filter(key => !(key === 'padding' && spec.nodeTypes[node.type].container))) + hoverFields(node);
+    if (tab === 'design') body = presetBar(node) + summary + responsiveFields('style', spec.style, node, Object.keys(spec.style).filter(key => !(key === 'padding' && spec.nodeTypes[node.type].container) && (key !== 'menuMode' || node.type === 'menu'))) + hoverFields(node);
     if (tab === 'settings') {
       const { bpIds } = ctx.state();
       const tags = spec.nodeTypes[node.type].tags;
@@ -449,6 +473,8 @@ export function createInspector(root, ctx) {
     if (event.target.closest('[data-delete]')) return ctx.remove(ctx.state().selected);
     if (event.target.closest('[data-edit-text]')) return void ctx.editText(ctx.state().selected);
     if (event.target.closest('[data-panel-move],[data-panel-remove],[data-panel-add]')) return void panelOps(event);
+    if (event.target.closest('[data-social-add]')) return void commitSocial(items => items.push({ label: '', url: 'https://example.com', icon: 'link' }));
+    if (event.target.closest('[data-social-remove]')) return void commitSocial(items => items.splice(Number(event.target.closest('[data-social]').dataset.social), 1));
     const pointPick = event.target.closest('[data-point-pick]');
     if (pointPick && field) {
       const r = pointPick.getBoundingClientRect();
@@ -490,6 +516,16 @@ export function createInspector(root, ctx) {
     if (event.target.closest('.lp')) { layoutPanel.onChange(event, root); return; }
     if (!ctx.editable()) return;
     if (event.target.matches('[data-preset-apply]')) return applyPreset(event.target.value);
+    const socialRow = event.target.closest('[data-social]');
+    if (socialRow) {
+      const i = Number(socialRow.dataset.social), t = event.target;
+      if (t.matches('[data-social-url]') && !t.value.trim()) return render();
+      return void commitSocial(items => {
+        if (t.matches('[data-social-icon]')) items[i].icon = t.value;
+        if (t.matches('[data-social-label]')) items[i].label = t.value.trim();
+        if (t.matches('[data-social-url]')) items[i].url = t.value.trim();
+      });
+    }
     if (event.target.matches('[data-panel-name]')) return void ctx.commit([{ path: ['nodes', event.target.dataset.panelName, 'name'], value: event.target.value.trim() || undefined }], { label: 'Rename panel' });
     if (event.target.matches('[data-ml-add]') && event.target.value) { const { images, captions } = galleryState(); return void commitGallery([...images, event.target.value], captions); }
     if (event.target.matches('[data-ml-caption]')) { const { images, captions } = galleryState(); captions[Number(event.target.dataset.mlCaption)] = event.target.value.trim(); return void commitGallery(images, captions); }
