@@ -9,7 +9,7 @@ ENV NIMBLE_BACKUP_DIR=/backups
 WORKDIR /app
 
 COPY package.json ./
-COPY server.mjs builder.html control-panel.html login.html index.html .htaccess ./
+COPY server.mjs builder.html editor.html control-panel.html login.html index.html .htaccess ./
 COPY lib ./lib
 COPY scripts ./scripts
 COPY assets ./assets

@@ -14,15 +14,17 @@ DirectoryIndex index.php
 
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
-  Header always set X-Frame-Options "DENY"
+  # PHP sets these on every response it handles (embeds and SVG uploads need their own values);
+  # Apache only fills them in for static files.
+  Header setifempty X-Frame-Options "DENY"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+  Header setifempty Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 </IfModule>
 
 RewriteEngine On
 RewriteRule ^(?:lib|storage|scripts|test|node_modules)(?:/|$) - [F,L,NC]
-RewriteRule ^(?:api(?:/|$)|uploads(?:/|$)|published(?:/|$)|builder(?:\.html)?$|control-panel(?:\.html)?$|index\.html$|robots\.txt$|sitemap\.xml$) index.php [QSA,L,NC]
+RewriteRule ^(?:api(?:/|$)|uploads(?:/|$)|embed(?:/|$)|published(?:/|$)|builder(?:\.html)?$|editor(?:\.html)?$|control-panel(?:\.html)?$|index\.html$|robots\.txt$|sitemap\.xml$) index.php [QSA,L,NC]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]

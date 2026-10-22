@@ -5,14 +5,19 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
-import { normalizeSite, makeDefaultSite, escapeHtml } from './lib/site-model.mjs';
+import { normalizeSite, makeDefaultSite, escapeHtml, hasForm } from './lib/site-model.mjs';
+import { formDefinition } from './lib/site-model-v2.mjs';
+import { validateSubmission, FORM_FILE_TYPES } from './lib/forms.mjs';
 import { publishAtomic, currentRelease } from './lib/publish-atomic.mjs';
 import { pageHtml } from './lib/render.mjs';
 import { validPassword, passwordHash, checkPassword } from './lib/passwords.mjs';
+import { fontRequest, cssUrl, parseFontCss, allowedFontUrl, isWoff2 } from './lib/fonts.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const storage = path.resolve(process.env.NIMBLE_STORAGE_DIR || root);
 const dataDir = path.join(storage, 'data'), uploads = path.join(storage, 'uploads'), published = path.join(storage, 'published');
+// Files sent through forms are private: they are only served to signed-in users from the inbox.
+const formFiles = path.join(dataDir, 'form-files');
 const production = process.env.NODE_ENV === 'production';
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST || (production ? '0.0.0.0' : '127.0.0.1');
@@ -25,7 +30,7 @@ if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 30) throw
 if (!Number.isInteger(maxDocumentBytes) || maxDocumentBytes < 10000 || maxDocumentBytes > 12000000) throw new Error('Site document limit must be 10,000–12,000,000 bytes.');
 if (!Number.isSafeInteger(maxStorageBytes) || maxStorageBytes < 1) throw new Error('Media quota must be a positive integer.');
 if (production && (!publicOrigin || !publicOrigin.startsWith('https://'))) throw new Error('Production requires NIMBLE_PUBLIC_URL=https://your-domain.');
-await Promise.all([dataDir, uploads, published].map(directory => fs.mkdir(directory, { recursive: true })));
+await Promise.all([dataDir, uploads, published, formFiles].map(directory => fs.mkdir(directory, { recursive: true })));
 const db = new DatabaseSync(path.join(dataDir, 'nimble.sqlite'));
 db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
 db.exec([
@@ -41,6 +46,7 @@ db.exec([
   'CREATE INDEX IF NOT EXISTS messages_created ON messages(created_at);'
 ].join('\n'));
 if (!db.prepare('PRAGMA table_info(sites)').all().some(column => column.name === 'revision')) db.exec('ALTER TABLE sites ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
+if (!db.prepare('PRAGMA table_info(messages)').all().some(column => column.name === 'fields_json')) db.exec('ALTER TABLE messages ADD COLUMN fields_json TEXT');
 db.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').run('contact_secret', randomBytes(32).toString('hex'));
 const contactSecret = db.prepare('SELECT value FROM app_settings WHERE key=?').get('contact_secret').value;
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -149,7 +155,7 @@ function headers(res, nonce = '') {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'" + (nonce ? " 'nonce-" + nonce + "'" : '') + "; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'" + (nonce ? " 'nonce-" + nonce + "'" : '') + "; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
   if (production) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
 }
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -199,7 +205,7 @@ function templateInput(body, current = null) {
   return { name, description, document };
 }
 function templateRow(id) { return db.prepare("SELECT * FROM templates WHERE id=? AND site_id='nimble'").get(id); }
-const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm' };
+const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.wav': 'audio/wav' };
 async function sendFile(req, res, filename, { html = false, immutable = false } = {}) {
   const info = await fs.stat(filename);
   if (!info.isFile()) throw problem(404, 'Not found.');
@@ -220,12 +226,20 @@ async function sendFile(req, res, filename, { html = false, immutable = false } 
     res.setHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + info.size);
     status = 206;
   }
+  if (path.extname(filename) === '.svg') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
   res.writeHead(status, { 'Content-Type': mime[path.extname(filename)] || 'application/octet-stream', 'Content-Length': Math.max(0, end - start + 1), 'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache' });
   if (req.method === 'HEAD' || info.size === 0) return res.end();
   const stream = createReadStream(filename, { start, end });
   stream.on('error', () => res.destroy());
   stream.pipe(res);
 }
+// SVG files are served with a sandboxing CSP (see sendFile) and shown through <img>, where scripts never run.
+const SVG_START = /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE\s+svg[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/i;
+function isSvg(bytes) {
+  const text = bytes.toString('utf8');
+  return Buffer.from(text, 'utf8').equals(bytes) && SVG_START.test(text.replace(/^\uFEFF/, ''));
+}
+const AUDIO_TYPES = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav', 'audio/vnd.wave': 'wav' };
 function detectMedia(bytes, type) {
   if (type === 'image/png' && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.length >= 24) return 'png';
   if (type === 'image/jpeg' && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'jpg';
@@ -233,25 +247,64 @@ function detectMedia(bytes, type) {
   if (type === 'image/webp' && bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP') return 'webp';
   if (type === 'video/mp4' && bytes.subarray(4, 8).toString() === 'ftyp') return 'mp4';
   if (type === 'video/webm' && bytes.subarray(0, 4).equals(Buffer.from([26,69,223,163]))) return 'webm';
-  throw problem(400, 'The file contents do not match a supported image or video format.');
+  if (type === 'font/woff2' && bytes.subarray(0, 4).toString('latin1') === 'wOF2') return 'woff2';
+  if (type === 'font/woff' && bytes.subarray(0, 4).toString('latin1') === 'wOFF') return 'woff';
+  if (type === 'font/ttf' && (bytes.subarray(0, 4).equals(Buffer.from([0, 1, 0, 0])) || bytes.subarray(0, 4).toString('latin1') === 'true')) return 'ttf';
+  if (type === 'font/otf' && bytes.subarray(0, 4).toString('latin1') === 'OTTO') return 'otf';
+  if (type === 'image/svg+xml' && isSvg(bytes)) return 'svg';
+  const audio = AUDIO_TYPES[type];
+  if (audio === 'mp3' && (bytes.subarray(0, 3).toString('latin1') === 'ID3' || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0))) return 'mp3';
+  if (audio === 'm4a' && bytes.subarray(4, 8).toString('latin1') === 'ftyp') return 'm4a';
+  if (audio === 'ogg' && bytes.subarray(0, 4).toString('latin1') === 'OggS') return 'ogg';
+  if (audio === 'wav' && bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WAVE') return 'wav';
+  throw problem(400, 'The file contents do not match a supported image, video, audio or font format.');
 }
 let mediaQueue = Promise.resolve();
 async function storeMedia(body) {
-  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif)|video\/(?:mp4|webm));base64,([a-z0-9+/]+={0,2})$/i);
-  if (!match || match[2].length > Math.ceil(maxMediaBytes / 3) * 4) throw problem(400, 'Upload an image or video no larger than 15 MB.');
+  const match = String(body.data || '').match(/^data:(image\/(?:png|jpeg|webp|gif|svg\+xml)|video\/(?:mp4|webm)|audio\/(?:mpeg|mp3|mp4|x-m4a|m4a|ogg|wav|x-wav|wave|vnd\.wave)|font\/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$/i);
+  if (!match || match[2].length > Math.ceil(maxMediaBytes / 3) * 4) throw problem(400, 'Upload an image, video, audio file or font no larger than 15 MB.');
   const bytes = Buffer.from(match[2], 'base64');
   if (bytes.toString('base64') !== match[2] || bytes.length > maxMediaBytes) throw problem(400, 'Invalid media encoding or file size.');
   const extension = detectMedia(bytes, match[1].toLowerCase());
+  const kind = match[1].toLowerCase().split('/')[0] === 'image' ? 'image' : match[1].toLowerCase().split('/')[0];
+  return saveUpload(bytes, extension, String(body.name || 'Media').slice(0, 200), kind);
+}
+function saveUpload(bytes, extension, name, kind) {
   const task = mediaQueue.catch(() => {}).then(async () => {
     const files = await fs.readdir(uploads, { withFileTypes: true });
     const sizes = await Promise.all(files.filter(file => file.isFile()).map(async file => (await fs.stat(path.join(uploads, file.name))).size));
     if (sizes.reduce((sum, size) => sum + size, 0) + bytes.length > maxStorageBytes) throw problem(413, 'Your media storage is full. Contact the site administrator.');
     const filename = randomUUID() + '.' + extension;
     await fs.writeFile(path.join(uploads, filename), bytes, { flag: 'wx' });
-    return { url: '/uploads/' + filename, name: String(body.name || 'Media').slice(0, 200), kind: match[1].startsWith('video') ? 'video' : 'image' };
+    return { url: '/uploads/' + filename, name, kind };
   });
   mediaQueue = task;
   return task;
+}
+// Downloads a Google font once and stores its WOFF2 files like other uploads.
+async function importGoogleFont(body) {
+  const request = fontRequest(body);
+  if (request.error) throw problem(400, request.error);
+  const base = process.env.NIMBLE_GOOGLE_FONTS_URL || 'https://fonts.googleapis.com';
+  const agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+  let response;
+  try { response = await fetch(cssUrl(base, request), { headers: { 'User-Agent': agent }, redirect: 'error', signal: AbortSignal.timeout(15000) }); }
+  catch { throw problem(502, 'Google Fonts could not be reached from this server.'); }
+  if (response.status === 400 || response.status === 404) throw problem(404, 'Google Fonts has no family called ' + request.family + ' with those weights.');
+  if (!response.ok) throw problem(502, 'Google Fonts returned an error (' + response.status + ').');
+  const faces = parseFontCss((await response.text()).slice(0, 200_000));
+  if (!faces.length) throw problem(404, 'Google Fonts has no web font files for ' + request.family + '.');
+  const files = [];
+  for (const face of faces.slice(0, 12)) {
+    if (!allowedFontUrl(face.url, base)) throw problem(502, 'Google Fonts returned an unexpected file address.');
+    let file;
+    try { file = await fetch(face.url, { redirect: 'error', signal: AbortSignal.timeout(15000) }); } catch { throw problem(502, 'A font file could not be downloaded.'); }
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (!file.ok || bytes.length > 2_000_000 || !isWoff2(bytes)) throw problem(502, 'A font file was not a valid WOFF2 file.');
+    const stored = await saveUpload(bytes, 'woff2', request.family + ' ' + face.weight + (face.style === 'italic' ? ' italic' : ''), 'font');
+    files.push({ src: stored.url, weight: face.weight, style: face.style });
+  }
+  return { family: request.family, files };
 }
 function contactToken(block) {
   const payload = Buffer.from(JSON.stringify({ block, expires: Date.now() + 3600000, nonce: randomBytes(8).toString('hex') })).toString('base64url');
@@ -269,7 +322,9 @@ const assets = new Map([
   ['/assets/builder.js', 'assets/builder.js'], ['/assets/control-panel.js', 'assets/control-panel.js'],
   ['/assets/login.js', 'assets/login.js'], ['/assets/public.js', 'assets/public.js'],
   ['/assets/public.css', 'assets/public.css'], ['/assets/editor.css', 'assets/editor.css'],
-  ['/assets/site-model.mjs', 'lib/site-model.mjs'], ['/assets/render.mjs', 'lib/render.mjs']
+  ['/assets/site-model.mjs', 'lib/site-model.mjs'], ['/assets/render.mjs', 'lib/render.mjs'],
+  ['/assets/public-v2.css', 'assets/public-v2.css'], ['/assets/site-model-v2.mjs', 'lib/site-model-v2.mjs'],
+  ['/assets/render-v2.mjs', 'lib/render-v2.mjs'], ['/assets/migrate-v1.mjs', 'lib/migrate-v1.mjs'], ['/assets/nimble-spec.json', 'lib/nimble-spec.json'], ['/assets/fonts.mjs', 'lib/fonts.mjs']
 ]);
 const server = http.createServer(async (req, res) => {
   headers(res);
@@ -394,6 +449,12 @@ const server = http.createServer(async (req, res) => {
       const result = await storeMedia(await readBody(req, 22_000_000)); audit(auth.user.id, 'media_uploaded', { url: result.url });
       return send(res, 201, result);
     }
+    if (pathname === '/api/fonts/google' && method === 'POST') {
+      const auth = requireAccess(req, 'edit', true);
+      rate('fonts:' + auth.user.id, 30, 60 * 60000);
+      const result = await importGoogleFont(await readBody(req, 10000)); audit(auth.user.id, 'font_imported', { family: result.family, files: result.files.length });
+      return send(res, 201, result);
+    }
     if (pathname === '/api/publish' && method === 'POST') {
       const auth = requireAccess(req, 'publish', true), body = await readBody(req);
       const row = body.pages ? savedDocument(req, body) : siteRow();
@@ -402,11 +463,24 @@ const server = http.createServer(async (req, res) => {
       audit(auth.user.id, 'site_published', { revision: row.revision, releaseId: result.releaseId });
       return send(res, 200, result);
     }
+    // Custom HTML embeds: served on their own URL with a sandboxing CSP, so the code runs in an opaque
+    // origin. ?draft=1 shows the saved draft to signed-in users (editor and preview).
+    const embed = pathname.match(/^\/embed\/([a-z][a-z0-9_-]{0,79})\.html$/);
+    if (embed && (method === 'GET' || method === 'HEAD')) {
+      let source;
+      if (url.searchParams.get('draft')) { requireAccess(req, 'view'); source = normalizeSite(JSON.parse(siteRow().document_json)); }
+      else source = (await currentRelease(published))?.site;
+      const node = source?.version === 2 ? source.nodes[embed[1]] : null;
+      if (!node || node.type !== 'embed' || (node.props?.kind || 'html') !== 'html' || !node.props?.html) throw problem(404, 'Not found.');
+      res.setHeader('Content-Security-Policy', "sandbox allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox; frame-ancestors 'self'");
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      return send(res, 200, '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0}</style></head><body>' + node.props.html + '</body></html>', 'text/html; charset=utf-8');
+    }
     if (pathname === '/api/preview' && method === 'POST') {
       requireAccess(req, 'view', true);
       const body = await readBody(req), document = normalizeSite(body.site);
       const page = document.pages.find(page => page.id === body.pageId) || document.pages[0];
-      return send(res, 200, pageHtml(document, page), 'text/html; charset=utf-8');
+      return send(res, 200, pageHtml(document, page, { draftEmbeds: true }), 'text/html; charset=utf-8');
     }
     if (pathname === '/api/admin/users' && method === 'GET') {
       requireAccess(req, 'users');
@@ -450,23 +524,49 @@ const server = http.createServer(async (req, res) => {
       const messages = db.prepare('SELECT * FROM messages WHERE id<? ORDER BY id DESC LIMIT 100').all(before);
       return send(res, 200, { messages, nextBefore: messages.length === 100 ? messages.at(-1).id : null });
     }
+    const fileMatch = pathname.match(/^\/api\/messages\/(\d+)\/files\/([a-f0-9-]{36}\.[a-z]{3,4})$/);
+    if (fileMatch && method === 'GET') {
+      requireAccess(req, 'messages');
+      const row = db.prepare('SELECT fields_json FROM messages WHERE id=?').get(Number(fileMatch[1]));
+      const entry = JSON.parse(row?.fields_json || '[]').find(item => item.type === 'file' && item.file === fileMatch[2]);
+      if (!entry) throw problem(404, 'Not found.');
+      const bytes = await fs.readFile(path.join(formFiles, entry.file));
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      res.writeHead(200, { 'Content-Type': FORM_FILE_TYPES[entry.file.split('.').pop()] || 'application/octet-stream', 'Content-Length': bytes.length, 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(entry.name), 'Cache-Control': 'private, no-store' });
+      return res.end(bytes);
+    }
     if (pathname.match(/^\/api\/messages\/\d+$/) && method === 'DELETE') {
       const auth = requireAccess(req, 'messages', true), id = Number(pathname.split('/').at(-1));
+      const row = db.prepare('SELECT fields_json FROM messages WHERE id=?').get(id);
+      for (const entry of JSON.parse(row?.fields_json || '[]')) if (entry.type === 'file' && /^[a-f0-9-]{36}\.[a-z]{3,4}$/.test(entry.file || '')) await fs.unlink(path.join(formFiles, entry.file)).catch(() => {});
       db.prepare('DELETE FROM messages WHERE id=?').run(id); audit(auth.user.id, 'message_deleted', { id });
       return send(res, 200, { ok: true });
     }
     if (pathname === '/api/contact-token' && method === 'GET') {
       rate('contact-token:' + clientIP(req), 100);
       const release = await currentRelease(published), block = url.searchParams.get('block');
-      if (!release?.site.pages.some(page => page.blocks.includes(block)) || release.site.blocks[block]?.type !== 'form') throw problem(404, 'This form is unavailable.');
+      if (!hasForm(release?.site, block)) throw problem(404, 'This form is unavailable.');
       return send(res, 200, { token: contactToken(block) });
     }
     if (pathname === '/api/contact' && method === 'POST') {
       rate('contact:' + clientIP(req), 5);
-      const body = await readBody(req, 15000, true);
+      // Builder forms may carry files (sent as data URLs), so the limit covers the largest allowed upload.
+      const body = await readBody(req, 22_000_000, true);
       const token = verifyContactToken(body.token), release = await currentRelease(published);
-      if (!release?.site.pages.some(page => page.blocks.includes(token.block)) || release.site.blocks[token.block]?.type !== 'form') throw problem(400, 'This form is unavailable.');
+      if (!hasForm(release?.site, token.block)) throw problem(400, 'This form is unavailable.');
       if (body.website) return send(res, 200, { ok: true });
+      const fields = formDefinition(release.site, token.block);
+      if (fields) {
+        let result;
+        try { result = validateSubmission(fields, body.fields); } catch (error) { throw problem(400, error.message); }
+        for (const file of result.files) {
+          file.entry.file = randomUUID() + '.' + file.extension;
+          await fs.writeFile(path.join(formFiles, file.entry.file), file.bytes, { flag: 'wx' });
+        }
+        db.prepare('INSERT INTO messages(name,email,message,page_id,created_at,fields_json) VALUES(?,?,?,?,?,?)').run(result.name, result.email, result.message, token.block, timestamp(), JSON.stringify(result.entries));
+        return send(res, 201, { ok: true });
+      }
+      if (Number(req.headers['content-length'] || 0) > 15000) throw problem(413, 'This request is too large.');
       const name = String(body.name || '').trim(), email = emailValue(body.email), message = String(body.message || '').trim();
       if (!name || name.length > 120 || !validEmail(email) || !message || message.length > 5000) throw problem(400, 'Enter your name, a valid email, and a message of at most 5,000 characters.');
       db.prepare('INSERT INTO messages(name,email,message,page_id,created_at) VALUES(?,?,?,?,?)').run(name, email, message, token.block, timestamp());
@@ -476,16 +576,17 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) throw problem(404, 'Endpoint not found.');
     if (!['GET', 'HEAD'].includes(method)) throw problem(405, 'Method not allowed.');
     if (assets.has(pathname)) return await sendFile(req, res, path.join(root, assets.get(pathname)));
-    if (pathname === '/builder' || pathname === '/control-panel') return redirect(res, pathname + '.html');
-    if (['/builder.html', '/control-panel.html'].includes(pathname)) {
+    if (/^\/assets\/editor\/[a-z-]+\.(?:mjs|css)$/.test(pathname)) return await sendFile(req, res, path.join(root, 'assets', 'editor', path.basename(pathname)));
+    if (pathname === '/builder' || pathname === '/editor' || pathname === '/control-panel') return redirect(res, pathname + '.html');
+    if (['/builder.html', '/editor.html', '/control-panel.html'].includes(pathname)) {
       if (!identity(req)) return redirect(res, '/login.html?next=' + encodeURIComponent(pathname));
       requireAccess(req);
       return await sendFile(req, res, path.join(root, pathname.slice(1)), { html: true });
     }
     if (pathname === '/login.html') return await sendFile(req, res, path.join(root, 'login.html'), { html: true });
-    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
+    if (/^\/uploads\/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|mp3|m4a|ogg|wav|woff2|woff|ttf|otf)$/.test(pathname)) return await sendFile(req, res, path.join(uploads, path.basename(pathname)), { immutable: true });
     const release = await currentRelease(published);
-    if (pathname === '/robots.txt') return send(res, 200, 'User-agent: *\n' + (release?.site.site.searchVisible ? 'Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /control-panel.html\n' : 'Disallow: /\n'), 'text/plain; charset=utf-8');
+    if (pathname === '/robots.txt') return send(res, 200, 'User-agent: *\n' + (release?.site.site.searchVisible ? 'Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /editor.html\nDisallow: /control-panel.html\n' : 'Disallow: /\n'), 'text/plain; charset=utf-8');
     if (pathname === '/sitemap.xml' && release && publicOrigin) return send(res, 200, '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + release.site.pages.map(page => '<url><loc>' + escapeHtml(publicOrigin + (page.id === 'home' ? '/' : '/' + page.id + '.html')) + '</loc></url>').join('') + '</urlset>', 'application/xml; charset=utf-8');
     if (release) {
       const local = pathname.startsWith('/published/') ? pathname.slice(10) : pathname;

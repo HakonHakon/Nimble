@@ -1,6 +1,7 @@
 document.querySelectorAll('[data-contact-form]').forEach(form => {
   let tokenPromise;
   const status = form.querySelector('[role=status]');
+  const builder = form.hasAttribute('data-fields');
   const loadToken = () => tokenPromise ||= fetch('/api/contact-token?block=' + encodeURIComponent(form.dataset.block)).then(async response => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Contact form unavailable.');
@@ -8,21 +9,209 @@ document.querySelectorAll('[data-contact-form]').forEach(form => {
     return data.token;
   });
   loadToken().catch(error => { status.textContent = error.message; tokenPromise = null; });
+
+  // Steps: Next checks the fields of the current step before moving on.
+  const steps = [...form.querySelectorAll('.form-step')];
+  let step = 0;
+  const valid = scope => {
+    for (const group of scope.querySelectorAll('fieldset[data-required]')) {
+      const boxes = [...group.querySelectorAll('input[type=checkbox]')];
+      boxes[0].setCustomValidity(boxes.some(box => box.checked) ? '' : 'Choose at least one option.');
+    }
+    for (const control of scope.querySelectorAll('input:not([type=hidden]):not([name=website]),select,textarea')) if (!control.checkValidity()) { control.reportValidity(); return false; }
+    return true;
+  };
+  const show = next => {
+    step = next;
+    steps.forEach((item, i) => { item.hidden = i !== step; });
+    form.querySelector('[data-form-back]')?.toggleAttribute('hidden', step === 0);
+    form.querySelector('[data-form-next]')?.toggleAttribute('hidden', step === steps.length - 1);
+    if (steps.length > 1) form.querySelector('button[type=submit]').hidden = step !== steps.length - 1;
+    const current = form.querySelector('[data-form-current]');
+    if (current) current.textContent = String(step + 1);
+    steps[step]?.querySelector('input,select,textarea')?.focus();
+  };
+  form.querySelector('[data-form-next]')?.addEventListener('click', () => { if (valid(steps[step])) show(step + 1); });
+  form.querySelector('[data-form-back]')?.addEventListener('click', () => show(step - 1));
+  form.addEventListener('change', event => { if (event.target.closest('fieldset[data-required]')) event.target.closest('fieldset').querySelector('input').setCustomValidity(''); });
+
+  const readFile = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, data: reader.result }); reader.onerror = reject; reader.readAsDataURL(file); });
+  async function payload() {
+    const data = new FormData(form);
+    if (!builder) return Object.fromEntries(data);
+    const fields = {};
+    for (const control of form.querySelectorAll('[name]')) {
+      const name = control.name;
+      if (name === 'token' || name === 'website' || name in fields) continue;
+      if (control.type === 'file') { const file = control.files[0]; if (file) { if (file.size > 5 * 1024 * 1024) throw new Error(file.name + ' is larger than 5 MB.'); fields[name] = await readFile(file); } continue; }
+      if (control.type === 'checkbox' && control.closest('.form-choice')) { fields[name] = data.getAll(name); continue; }
+      if (control.type === 'checkbox') { fields[name] = control.checked ? 'yes' : ''; continue; }
+      fields[name] = data.get(name) ?? '';
+    }
+    return { token: data.get('token'), website: data.get('website'), fields };
+  }
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const button = form.querySelector('button');
+    if (builder && !valid(form)) return;
+    const button = form.querySelector('button[type=submit]');
     button.disabled = true;
     status.textContent = 'Sending…';
     try {
       await loadToken();
-      const response = await fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      const response = await fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(await payload()) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Message could not be sent.');
+      if (form.dataset.redirect) { location.assign(form.dataset.redirect); return; }
       form.reset();
-      status.textContent = 'Thank you. Your message has reached our team.';
+      if (steps.length > 1) show(0);
+      status.textContent = form.dataset.success || 'Thank you. Your message has reached our team.';
       tokenPromise = null;
       loadToken().catch(() => { tokenPromise = null; });
     } catch (error) { status.textContent = error.message; tokenPromise = null; }
     finally { button.disabled = false; }
   });
 });
+
+// Background scroll effects. "reveal" is pure CSS (fixed background); "parallax" moves the
+// background more slowly than the page. The effect can differ per breakpoint, so it is read from CSS.
+(() => {
+  const items = [...document.querySelectorAll('[data-fx]')];
+  if (!items.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let queued = false;
+  const update = () => {
+    queued = false;
+    const height = innerHeight;
+    for (const element of items) {
+      const effect = getComputedStyle(element).getPropertyValue('--fx').trim();
+      if (effect !== 'parallax') { element.style.removeProperty('background-position-y'); continue; }
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > height) continue;
+      const progress = (rect.top + rect.height) / (height + rect.height) - 0.5;
+      element.style.backgroundPositionY = 'calc(50% + ' + Math.round(progress * rect.height * 0.35) + 'px)';
+    }
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
+  addEventListener('scroll', queue, { passive: true });
+  addEventListener('resize', queue);
+  update();
+})();
+
+// Gallery sliders: arrow buttons and optional autoplay (paused on hover, focus and reduced motion).
+document.querySelectorAll('[data-slider]').forEach(slider => {
+  const track = slider.querySelector('.g-track');
+  const count = track.children.length;
+  const current = () => Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+  const go = index => track.scrollTo({ left: ((index + count) % count) * track.clientWidth });
+  slider.querySelector('.g-prev')?.addEventListener('click', () => go(current() - 1));
+  slider.querySelector('.g-next')?.addEventListener('click', () => go(current() + 1));
+  const seconds = Number(slider.dataset.autoplay);
+  if (!seconds || count < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let paused = false;
+  for (const [type, value] of [['mouseenter', true], ['mouseleave', false], ['focusin', true], ['focusout', false]]) slider.addEventListener(type, () => { paused = value; });
+  setInterval(() => { if (!paused && !document.hidden) go(current() + 1); }, seconds * 1000);
+});
+
+// Gallery lightbox: opens the clicked image full screen; arrows and Esc work as expected.
+document.querySelectorAll('[data-lightbox]').forEach(gallery => {
+  const items = [...gallery.querySelectorAll('.g-open')];
+  let dialog = null, index = 0;
+  const show = next => {
+    index = (next + items.length) % items.length;
+    const source = items[index], caption = source.parentElement.querySelector('figcaption');
+    dialog.querySelector('img').src = source.getAttribute('href');
+    dialog.querySelector('img').alt = source.querySelector('img')?.alt || '';
+    dialog.querySelector('figcaption').textContent = caption ? caption.textContent : '';
+  };
+  const open = start => {
+    if (!dialog) {
+      dialog = document.createElement('dialog');
+      dialog.className = 'lightbox';
+      dialog.setAttribute('aria-label', 'Image viewer');
+      dialog.innerHTML = '<figure><img alt=""><figcaption></figcaption></figure><button type="button" class="lb-close" aria-label="Close">×</button><button type="button" class="lb-prev" aria-label="Previous image">‹</button><button type="button" class="lb-next" aria-label="Next image">›</button>';
+      dialog.querySelector('.lb-close').addEventListener('click', () => dialog.close());
+      dialog.querySelector('.lb-prev').addEventListener('click', () => show(index - 1));
+      dialog.querySelector('.lb-next').addEventListener('click', () => show(index + 1));
+      dialog.addEventListener('keydown', event => { if (event.key === 'ArrowLeft') show(index - 1); if (event.key === 'ArrowRight') show(index + 1); });
+      dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+      document.body.append(dialog);
+    }
+    show(start);
+    dialog.showModal();
+  };
+  items.forEach((item, i) => item.addEventListener('click', event => { event.preventDefault(); open(i); }));
+});
+
+// Tabs: click or arrow keys switch panels (WAI-ARIA tabs pattern with automatic activation).
+document.querySelectorAll('[data-tabs]').forEach(tabs => {
+  const buttons = [...tabs.querySelectorAll(':scope > .tab-list > [role=tab]')];
+  const select = (button, focus = false) => {
+    for (const item of buttons) {
+      const on = item === button;
+      item.setAttribute('aria-selected', String(on));
+      item.tabIndex = on ? 0 : -1;
+      document.getElementById(item.getAttribute('aria-controls')).hidden = !on;
+    }
+    if (focus) button.focus();
+  };
+  buttons.forEach((button, i) => {
+    button.addEventListener('click', () => select(button));
+    button.addEventListener('keydown', event => {
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: buttons.length - 1 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      select(buttons[(next + buttons.length) % buttons.length], true);
+    });
+  });
+});
+
+// Popups: links to a popup section open it; "on load" popups open once per visit after their delay.
+(() => {
+  const dialogs = new Map([...document.querySelectorAll('dialog[data-popup]')].map(dialog => [dialog.dataset.popup, dialog]));
+  if (!dialogs.size) return;
+  const open = dialog => { if (!dialog.open) dialog.showModal(); };
+  for (const dialog of dialogs.values()) {
+    dialog.querySelector('.popup-close').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+    if (dialog.dataset.open === 'load') {
+      const key = 'nimble-popup-' + dialog.dataset.popup;
+      let seen = false;
+      try { seen = sessionStorage.getItem(key) === '1'; sessionStorage.setItem(key, '1'); } catch { /* storage unavailable */ }
+      if (!seen) setTimeout(() => open(dialog), Number(dialog.dataset.delay || 0) * 1000);
+    }
+  }
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    const dialog = link && dialogs.get(decodeURIComponent(link.getAttribute('href').slice(1)));
+    if (!dialog) return;
+    event.preventDefault();
+    open(dialog);
+  });
+})();
+
+// Menus: the hamburger opens a full-screen panel; sub-menu buttons open drop-downs on touch screens.
+document.querySelectorAll('.t-menu').forEach(menu => {
+  const toggle = menu.querySelector(':scope > .menu-toggle');
+  const setOpen = open => {
+    menu.classList.toggle('is-open', open);
+    toggle?.setAttribute('aria-expanded', String(open));
+    toggle?.setAttribute('aria-label', open ? 'Close menu' : 'Menu');
+    document.documentElement.style.overflow = open ? 'hidden' : '';
+  };
+  toggle?.addEventListener('click', () => setOpen(!menu.classList.contains('is-open')));
+  menu.addEventListener('click', event => { if (event.target.closest('a') && menu.classList.contains('is-open')) setOpen(false); });
+  menu.addEventListener('keydown', event => { if (event.key === 'Escape' && menu.classList.contains('is-open')) { setOpen(false); toggle?.focus(); } });
+  menu.querySelectorAll('.sub-toggle').forEach(button => button.addEventListener('click', () => {
+    const item = button.parentElement, open = !item.classList.contains('is-open');
+    item.classList.toggle('is-open', open);
+    button.setAttribute('aria-expanded', String(open));
+  }));
+});
+
+// Headers with a scroll style get "is-scrolled" once the page has scrolled.
+(() => {
+  const headers = [...document.querySelectorAll('[data-scroll]')];
+  if (!headers.length) return;
+  const update = () => { for (const header of headers) header.classList.toggle('is-scrolled', scrollY > 8); };
+  addEventListener('scroll', update, { passive: true });
+  update();
+})();

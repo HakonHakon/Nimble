@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/site-model.php';
 require_once __DIR__ . '/lib/render.php';
+require_once __DIR__ . '/lib/site-model-v2.php';
+require_once __DIR__ . '/lib/render-v2.php';
+require_once __DIR__ . '/lib/fonts.php';
+require_once __DIR__ . '/lib/forms.php';
 
 $configFile = __DIR__ . '/config.php';
 if (!is_file($configFile)) {
@@ -26,7 +30,9 @@ if ($config['session_days'] < 1 || $config['session_days'] > 30) throw new Runti
 $storage = $config['storage_dir'];
 $dataDir = $storage . '/data';
 $uploadsDir = $storage . '/uploads';
-foreach ([$storage, $dataDir, $uploadsDir] as $directory) {
+// Files sent through forms are private: they are only served to signed-in users from the inbox.
+$formFilesDir = $dataDir . '/form-files';
+foreach ([$storage, $dataDir, $uploadsDir, $formFilesDir] as $directory) {
     if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) throw new RuntimeException('Could not create writable storage directory.');
 }
 $dbConfig = $config['db'] ?? [];
@@ -57,6 +63,7 @@ function setup_database(): void
         "CREATE TABLE IF NOT EXISTS audit_events (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,user_id BIGINT UNSIGNED NULL,action VARCHAR(80) NOT NULL,metadata_json TEXT NULL,created_at DATETIME NOT NULL,INDEX audit_created (created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     ];
     foreach ($tables as $table) db()->exec($table);
+    if (!db()->query("SHOW COLUMNS FROM messages LIKE 'fields_json'")->fetch()) db()->exec('ALTER TABLE messages ADD COLUMN fields_json MEDIUMTEXT NULL');
     db()->prepare("INSERT IGNORE INTO app_settings (`key`,value) VALUES ('contact_secret',?)")->execute([bin2hex(random_bytes(32))]);
 }
 setup_database();
@@ -176,7 +183,7 @@ function same_origin(): void
 function security_headers(): void
 {
     header('X-Content-Type-Options: nosniff'); header('X-Frame-Options: DENY'); header('Referrer-Policy: strict-origin-when-cross-origin'); header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     if (cfg('production', true)) header('Strict-Transport-Security: max-age=31536000');
 }
 function json_response(int $status, array $body): never
@@ -243,7 +250,18 @@ function media_extension(string $type, string $bytes): string
     if ($type === 'image/webp' && substr($bytes, 0, 4) === 'RIFF' && substr($bytes, 8, 4) === 'WEBP') return 'webp';
     if ($type === 'video/mp4' && substr($bytes, 4, 4) === 'ftyp') return 'mp4';
     if ($type === 'video/webm' && substr($bytes, 0, 4) === "\x1a\x45\xdf\xa3") return 'webm';
-    nimble_error('The file contents do not match a supported image or video format.'); return '';
+    if ($type === 'font/woff2' && substr($bytes, 0, 4) === 'wOF2') return 'woff2';
+    if ($type === 'font/woff' && substr($bytes, 0, 4) === 'wOFF') return 'woff';
+    if ($type === 'font/ttf' && (substr($bytes, 0, 4) === "\x00\x01\x00\x00" || substr($bytes, 0, 4) === 'true')) return 'ttf';
+    if ($type === 'font/otf' && substr($bytes, 0, 4) === 'OTTO') return 'otf';
+    // SVG files are served with a sandboxing CSP (see serve_upload) and shown through <img>, where scripts never run.
+    $audio = ['audio/mpeg' => 'mp3', 'audio/mp3' => 'mp3', 'audio/mp4' => 'm4a', 'audio/x-m4a' => 'm4a', 'audio/m4a' => 'm4a', 'audio/ogg' => 'ogg', 'audio/wav' => 'wav', 'audio/x-wav' => 'wav', 'audio/wave' => 'wav', 'audio/vnd.wave' => 'wav'][$type] ?? null;
+    if ($audio === 'mp3' && (substr($bytes, 0, 3) === 'ID3' || (strlen($bytes) > 1 && ord($bytes[0]) === 0xff && (ord($bytes[1]) & 0xe0) === 0xe0))) return 'mp3';
+    if ($audio === 'm4a' && substr($bytes, 4, 4) === 'ftyp') return 'm4a';
+    if ($audio === 'ogg' && substr($bytes, 0, 4) === 'OggS') return 'ogg';
+    if ($audio === 'wav' && substr($bytes, 0, 4) === 'RIFF' && substr($bytes, 8, 4) === 'WAVE') return 'wav';
+    if ($type === 'image/svg+xml' && mb_check_encoding($bytes, 'UTF-8') && preg_match('/^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--.*?-->\s*)*(?:<!DOCTYPE\s+svg[^>]*>\s*)?(?:<!--.*?-->\s*)*<svg[\s>]/is', preg_replace('/^\xEF\xBB\xBF/', '', $bytes))) return 'svg';
+    nimble_error('The file contents do not match a supported image, video, audio or font format.'); return '';
 }
 function media_size(): int
 {
@@ -251,15 +269,22 @@ function media_size(): int
 }
 function store_media(array $body): array
 {
-    $data = (string)($body['data'] ?? ''); if (!preg_match('#^data:(image/(?:png|jpeg|webp|gif)|video/(?:mp4|webm));base64,([a-z0-9+/]+={0,2})$#i', $data, $match)) nimble_error('Upload an image or video no larger than 15 MB.');
+    $data = (string)($body['data'] ?? ''); if (!preg_match('#^data:(image/(?:png|jpeg|webp|gif|svg\+xml)|video/(?:mp4|webm)|audio/(?:mpeg|mp3|mp4|x-m4a|m4a|ogg|wav|x-wav|wave|vnd\.wave)|font/(?:woff2|woff|ttf|otf));base64,([a-z0-9+/]+={0,2})$#i', $data, $match)) nimble_error('Upload an image, video, audio file or font no larger than 15 MB.');
     $bytes = base64_decode($match[2], true); if ($bytes === false || strlen($bytes) > (int)cfg('max_media_bytes', 15728640) || media_size() + strlen($bytes) > (int)cfg('media_quota_bytes', 1073741824)) nimble_error('Invalid media encoding, file size, or storage quota.', 413);
-    $extension = media_extension(strtolower($match[1]), $bytes); $filename = bin2hex(random_bytes(16)) . '.' . $extension; $path = cfg('storage_dir') . '/uploads/' . $filename;
+    $extension = media_extension(strtolower($match[1]), $bytes);
+    $kind = explode('/', strtolower($match[1]))[0];
+    return save_upload($bytes, $extension, substr((string)($body['name'] ?? 'Media'), 0, 200), $kind);
+}
+function save_upload(string $bytes, string $extension, string $name, string $kind): array
+{
+    if (media_size() + strlen($bytes) > (int)cfg('media_quota_bytes', 1073741824)) nimble_error('Your media storage is full. Contact the site administrator.', 413);
+    $filename = bin2hex(random_bytes(16)) . '.' . $extension; $path = cfg('storage_dir') . '/uploads/' . $filename;
     if (file_put_contents($path, $bytes, LOCK_EX) === false) throw new RuntimeException('Could not store the upload.');
-    return ['url' => '/uploads/' . $filename, 'name' => substr((string)($body['name'] ?? 'Media'), 0, 200), 'kind' => str_starts_with(strtolower($match[1]), 'video') ? 'video' : 'image'];
+    return ['url' => '/uploads/' . $filename, 'name' => $name, 'kind' => $kind];
 }
 function serve_upload(string $path): never
 {
-    if (!preg_match('#^/uploads/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|mp4|webm)$#', $path)) nimble_error('Not found.', 404);
+    if (!preg_match('#^/uploads/[a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|mp3|m4a|ogg|wav|woff2|woff|ttf|otf)$#', $path)) nimble_error('Not found.', 404);
     $file = cfg('storage_dir') . '/uploads/' . basename($path); if (!is_file($file)) nimble_error('Not found.', 404); $size = filesize($file); $start = 0; $end = $size - 1; $status = 200;
     header('Accept-Ranges: bytes');
     $range = (string)($_SERVER['HTTP_RANGE'] ?? '');
@@ -269,7 +294,8 @@ function serve_upload(string $path): never
         if ($start > $end || $start >= $size) { header('Content-Range: bytes */' . $size); nimble_error('Invalid media range.', 416); }
         $status = 206; header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
     }
-    $mime = ['png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp','gif'=>'image/gif','mp4'=>'video/mp4','webm'=>'video/webm'][strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+    $mime = ['png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp','gif'=>'image/gif','mp4'=>'video/mp4','webm'=>'video/webm','woff2'=>'font/woff2','woff'=>'font/woff','ttf'=>'font/ttf','otf'=>'font/otf','svg'=>'image/svg+xml','mp3'=>'audio/mpeg','m4a'=>'audio/mp4','ogg'=>'audio/ogg','wav'=>'audio/wav'][strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+    if ($mime === 'image/svg+xml') header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
     http_response_code($status); header('Content-Type: ' . $mime); header('Content-Length: ' . max(0, $end - $start + 1)); header('Cache-Control: public, max-age=31536000, immutable');
     if (request_method() === 'HEAD' || $size === 0) exit;
     $handle = fopen($file, 'rb'); fseek($handle, $start); $remaining = $end - $start + 1; while ($remaining > 0 && !feof($handle)) { $chunk = fread($handle, min(1048576, $remaining)); if ($chunk === false) break; echo $chunk; $remaining -= strlen($chunk); } fclose($handle); exit;
@@ -334,11 +360,23 @@ try {
         });
         json_response(200, ['template' => template_public($row)]);
     }
+    if ($path === '/api/fonts/google' && $method === 'POST') { $auth = require_access('edit', true); rate_limit('fonts:' . $auth['user']['id'], 30, 3600); $result = nimble_import_google_font(request_body(10000), static fn(string $bytes, string $extension, string $name): array => save_upload($bytes, $extension, $name, 'font')); audit((int)$auth['user']['id'], 'font_imported', ['family' => $result['family'], 'files' => count($result['files'])]); json_response(201, $result); }
     if ($path === '/api/media' && $method === 'POST') { $auth = require_access('edit', true); $result = store_media(request_body(22000000)); audit((int)$auth['user']['id'], 'media_uploaded', ['url' => $result['url']]); json_response(201, $result); }
     if ($path === '/api/publish' && $method === 'POST') {
         $auth = require_access('publish', true); $body = request_body(10000); $row = db_transaction(function () use ($body): array { $row = site_row(true); if (!$row) nimble_error('Owner setup is incomplete.', 503); if ((int)($body['revision'] ?? 0) !== (int)$row['revision']) nimble_error('Save and load the latest draft before publishing.', 409); db()->prepare("UPDATE sites SET published_json=document_json,published_revision=revision,published_at=? WHERE id='nimble'")->execute([timestamp()]); return site_row() ?? $row; }); audit((int)$auth['user']['id'], 'site_published', ['revision' => (int)$row['revision']]); json_response(200, ['ok' => true, 'url' => cfg('public_url') . '/']);
     }
-    if ($path === '/api/preview' && $method === 'POST') { require_access('view', true); $body = request_body((int)cfg('max_document_bytes', 2000000)); $document = nimble_normalize($body['site'] ?? []); $page = $document['pages'][0]; foreach ($document['pages'] as $candidate) if (($candidate['id'] ?? '') === ($body['pageId'] ?? '')) $page = $candidate; html_response(nimble_render_page($document, $page)); }
+    if ($path === '/api/preview' && $method === 'POST') { require_access('view', true); $body = request_body((int)cfg('max_document_bytes', 2000000)); $document = nimble_normalize($body['site'] ?? []); $page = $document['pages'][0]; foreach ($document['pages'] as $candidate) if (($candidate['id'] ?? '') === ($body['pageId'] ?? '')) $page = $candidate; html_response(nimble_render_page($document, $page, ['draftEmbeds' => true])); }
+    // Custom HTML embeds: served on their own URL with a sandboxing CSP, so the code runs in an opaque
+    // origin. ?draft=1 shows the saved draft to signed-in users (editor and preview).
+    if (preg_match('#^/embed/([a-z][a-z0-9_-]{0,79})\.html$#', $path, $match) && in_array($method, ['GET', 'HEAD'], true)) {
+        if (!empty($_GET['draft'])) { require_access('view'); $row = site_row(); $source = $row ? nimble_normalize(json_decode($row['document_json'], true)) : null; }
+        else $source = published_site();
+        $node = ($source['version'] ?? null) === 2 ? ($source['nodes'][$match[1]] ?? null) : null;
+        if (!$node || $node['type'] !== 'embed' || ($node['props']['kind'] ?? 'html') !== 'html' || ($node['props']['html'] ?? '') === '') nimble_error('Not found.', 404);
+        header("Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox; frame-ancestors 'self'");
+        header('X-Frame-Options: SAMEORIGIN');
+        html_response('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0}</style></head><body>' . $node['props']['html'] . '</body></html>');
+    }
     if ($path === '/api/admin/users' && $method === 'GET') { require_access('users'); $rows = db()->query("SELECT u.id,u.name,u.email,u.created_at,m.role AS site_role FROM users u JOIN site_members m ON m.user_id=u.id AND m.site_id='nimble' ORDER BY u.id")->fetchAll(); json_response(200, ['users' => $rows]); }
     if ($path === '/api/admin/users' && $method === 'POST') { $auth = require_access('users', true); $body = request_body(10000); if (!in_array($body['role'] ?? '', ['admin', 'editor', 'viewer'], true)) nimble_error('Choose a valid role.'); $user = db_transaction(function () use ($body, $auth): array { $account = create_user($body, $body['role'] === 'admin' ? 'admin' : 'user'); db()->prepare('INSERT INTO site_members(site_id,user_id,role,created_at) VALUES(?,?,?,?)')->execute(['nimble', $account['id'], $body['role'], timestamp()]); audit((int)$auth['user']['id'], 'user_created', ['userId' => $account['id']]); return $account; }); json_response(201, ['user' => $user]); }
     if (preg_match('#^/api/admin/users/([0-9]+)(/reset-password)?$#', $path, $match) && in_array($method, ['PATCH', 'DELETE', 'POST'], true)) {
@@ -350,17 +388,44 @@ try {
         nimble_error('Method not allowed.', 405);
     }
     if ($path === '/api/messages' && $method === 'GET') { require_access('messages'); $before = max(0, (int)($_GET['before'] ?? PHP_INT_MAX)); $stmt = db()->prepare('SELECT * FROM messages WHERE id<? ORDER BY id DESC LIMIT 100'); $stmt->execute([$before]); $messages = $stmt->fetchAll(); json_response(200, ['messages' => $messages, 'nextBefore' => count($messages) === 100 ? (int)$messages[count($messages) - 1]['id'] : null]); }
-    if (preg_match('#^/api/messages/[0-9]+$#', $path) && $method === 'DELETE') { $auth = require_access('messages', true); $id = (int)basename($path); db()->prepare('DELETE FROM messages WHERE id=?')->execute([$id]); audit((int)$auth['user']['id'], 'message_deleted', ['id' => $id]); json_response(200, ['ok' => true]); }
-    if ($path === '/api/contact-token' && $method === 'GET') { rate_limit('contact-token:' . client_ip(), 100); $site = published_site(); $block = (string)($_GET['block'] ?? ''); $found = false; if ($site) foreach ($site['pages'] as $page) if (in_array($block, $page['blocks'], true)) $found = true; if (!$site || !$found || (($site['blocks'][$block]['type'] ?? '') !== 'form')) nimble_error('This form is unavailable.', 404); json_response(200, ['token' => contact_token($block)]); }
+    if (preg_match('#^/api/messages/([0-9]+)/files/([a-f0-9]{32}\.[a-z]{3,4})$#', $path, $match) && $method === 'GET') {
+        require_access('messages');
+        $stmt = db()->prepare('SELECT fields_json FROM messages WHERE id=?'); $stmt->execute([(int)$match[1]]); $entry = null;
+        foreach (json_decode((string)($stmt->fetchColumn() ?: '[]'), true) ?: [] as $item) if (($item['type'] ?? '') === 'file' && ($item['file'] ?? '') === $match[2]) $entry = $item;
+        $file = $GLOBALS['formFilesDir'] . '/' . $match[2];
+        if (!$entry || !is_file($file)) nimble_error('Not found.', 404);
+        header("Content-Security-Policy: default-src 'none'; sandbox");
+        header('Content-Type: ' . (NIMBLE_FORM_FILE_TYPES[pathinfo($file, PATHINFO_EXTENSION)] ?? 'application/octet-stream'));
+        header("Content-Disposition: attachment; filename*=UTF-8''" . rawurlencode($entry['name']));
+        header('Content-Length: ' . filesize($file)); header('Cache-Control: private, no-store');
+        readfile($file); exit;
+    }
+    if (preg_match('#^/api/messages/[0-9]+$#', $path) && $method === 'DELETE') { $auth = require_access('messages', true); $id = (int)basename($path);
+        $stmt = db()->prepare('SELECT fields_json FROM messages WHERE id=?'); $stmt->execute([$id]);
+        foreach (json_decode((string)($stmt->fetchColumn() ?: '[]'), true) ?: [] as $item) if (($item['type'] ?? '') === 'file' && preg_match('/^[a-f0-9]{32}\.[a-z]{3,4}$/', (string)($item['file'] ?? ''))) @unlink($GLOBALS['formFilesDir'] . '/' . $item['file']); db()->prepare('DELETE FROM messages WHERE id=?')->execute([$id]); audit((int)$auth['user']['id'], 'message_deleted', ['id' => $id]); json_response(200, ['ok' => true]); }
+    if ($path === '/api/contact-token' && $method === 'GET') { rate_limit('contact-token:' . client_ip(), 100); $site = published_site(); $block = (string)($_GET['block'] ?? ''); if (!nimble_has_form($site, $block)) nimble_error('This form is unavailable.', 404); json_response(200, ['token' => contact_token($block)]); }
     if ($path === '/api/contact' && $method === 'POST') {
-        rate_limit('contact:' . client_ip(), 5); $body = request_body(15000, true); $token = contact_token_data((string)($body['token'] ?? '')); $site = published_site(); $found = false; if ($site) foreach ($site['pages'] as $page) if (in_array($token['block'] ?? '', $page['blocks'], true)) $found = true; if (!$site || !$found || (($site['blocks'][$token['block']]['type'] ?? '') !== 'form')) nimble_error('This form is unavailable.'); if (!empty($body['website'])) json_response(200, ['ok' => true]);
+        rate_limit('contact:' . client_ip(), 5); $body = request_body(22000000, true); $token = contact_token_data((string)($body['token'] ?? '')); $site = published_site(); if (!nimble_has_form($site, (string)($token['block'] ?? ''))) nimble_error('This form is unavailable.'); if (!empty($body['website'])) json_response(200, ['ok' => true]);
+        // Builder forms: values are checked against the published field list; files go to private storage.
+        $fields = nimble_v2_form_definition($site, (string)$token['block']);
+        if ($fields !== null) {
+            $result = nimble_validate_submission($fields, $body['fields'] ?? null);
+            foreach ($result['files'] as $file) {
+                $stored = bin2hex(random_bytes(16)) . '.' . $file['extension'];
+                if (file_put_contents($GLOBALS['formFilesDir'] . '/' . $stored, $file['bytes'], LOCK_EX) === false) throw new RuntimeException('Could not store the file.');
+                $result['entries'][$file['index']]['file'] = $stored;
+            }
+            db()->prepare('INSERT INTO messages(name,email,message,page_id,created_at,fields_json) VALUES(?,?,?,?,?,?)')->execute([$result['name'], $result['email'], $result['message'], (string)$token['block'], timestamp(), json_encode($result['entries'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+            json_response(201, ['ok' => true]);
+        }
+        if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 15000) nimble_error('This request is too large.', 413);
         $name = trim((string)($body['name'] ?? '')); $email = strtolower(trim((string)($body['email'] ?? ''))); $message = trim((string)($body['message'] ?? '')); if ($name === '' || strlen($name) > 120 || !valid_email($email) || $message === '' || strlen($message) > 5000) nimble_error('Enter your name, a valid email, and a message of at most 5,000 characters.'); db()->prepare('INSERT INTO messages(name,email,message,page_id,created_at) VALUES(?,?,?,?,?)')->execute([$name, $email, $message, (string)$token['block'], timestamp()]); json_response(201, ['ok' => true]);
     }
     if (str_starts_with($path, '/api/')) nimble_error('Endpoint not found.', 404);
     if ($path === '/uploads/' || str_starts_with($path, '/uploads/')) serve_upload($path);
-    if ($path === '/builder' || $path === '/control-panel') redirect_to($path . '.html');
-    if (in_array($path, ['/builder.html', '/control-panel.html'], true)) { require_access(); $file = __DIR__ . $path; if (!is_file($file)) nimble_error('Not found.', 404); header('Content-Type: text/html; charset=utf-8'); header('Cache-Control: no-store'); readfile($file); exit; }
-    if ($path === '/robots.txt') { $site = published_site(); header('Content-Type: text/plain; charset=utf-8'); echo "User-agent: *\n" . (!empty($site['site']['searchVisible']) ? "Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /control-panel.html\n" : "Disallow: /\n"); exit; }
+    if ($path === '/builder' || $path === '/editor' || $path === '/control-panel') redirect_to($path . '.html');
+    if (in_array($path, ['/builder.html', '/editor.html', '/control-panel.html'], true)) { require_access(); $file = __DIR__ . $path; if (!is_file($file)) nimble_error('Not found.', 404); header('Content-Type: text/html; charset=utf-8'); header('Cache-Control: no-store'); readfile($file); exit; }
+    if ($path === '/robots.txt') { $site = published_site(); header('Content-Type: text/plain; charset=utf-8'); echo "User-agent: *\n" . (!empty($site['site']['searchVisible']) ? "Allow: /\nDisallow: /api/\nDisallow: /builder.html\nDisallow: /editor.html\nDisallow: /control-panel.html\n" : "Disallow: /\n"); exit; }
     $site = published_site(); if ($path === '/sitemap.xml' && $site) { header('Content-Type: application/xml; charset=utf-8'); $xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'; foreach ($site['pages'] as $page) $xml .= '<url><loc>' . nimble_escape(cfg('public_url') . ($page['id'] === 'home' ? '/' : '/' . $page['id'] . '.html')) . '</loc></url>'; echo $xml . '</urlset>'; exit; }
     if ($site) { $page = public_page_for($path, $site); if ($page) html_response(nimble_render_page($site, $page)); }
     if ($path === '/') html_response('<!doctype html><title>Nimble</title><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/assets/public.css"><main class="wrap block"><h1>Nimble</h1><p>Your new website is on its way.</p><a href="/login.html">Team sign in</a></main>');

@@ -10,6 +10,8 @@ return [
     'max_document_bytes' => 2000000,
     'max_media_bytes' => 15728640,
     'media_quota_bytes' => 1073741824,
+    // Google Fonts are downloaded once by this server and then served from /uploads.
+    'google_fonts_url' => 'https://fonts.googleapis.com',
     'db' => [
         'host' => 'localhost',
         'name' => 'replace_database_name',

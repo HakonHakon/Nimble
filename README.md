@@ -50,7 +50,8 @@ Open [http://localhost:4173/login.html](http://localhost:4173/login.html). On th
 Useful local URLs:
 
 - `/login.html` — sign in or create the first owner
-- `/builder.html` — visual website builder
+- `/builder.html` — classic builder, for sites that have not been converted to the new format
+- `/editor.html` — the editor: element tree, freeform and responsive layout, layers, multi-select, templates. Sites made with the classic builder are converted on the first edit; see [docs/editor.md](docs/editor.md) and [docs/site-format-v2.md](docs/site-format-v2.md)
 - `/control-panel.html` — team members and contact enquiries
 - `/` — the public site after the first publish
 - `/api/health` — process health

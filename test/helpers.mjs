@@ -29,7 +29,7 @@ export async function fixture() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'nimble-release-test-'));
   const app = path.join(directory, 'app'), storage = path.join(directory, 'storage'), backupDir = path.join(directory, 'backups');
   await fs.mkdir(app);
-  for (const entry of ['server.mjs', 'package.json', 'lib', 'scripts', 'assets', 'builder.html', 'login.html', 'control-panel.html']) await fs.cp(path.join(sourceRoot, entry), path.join(app, entry), { recursive: true });
+  for (const entry of ['server.mjs', 'package.json', 'lib', 'scripts', 'assets', 'builder.html', 'editor.html', 'login.html', 'control-panel.html']) await fs.cp(path.join(sourceRoot, entry), path.join(app, entry), { recursive: true });
   await fs.writeFile(path.join(app, '.env'), 'SYNTHETIC_SECRET=never-expose');
   await fs.mkdir(path.join(app, 'backups')); await fs.writeFile(path.join(app, 'backups', 'fixture.sqlite'), 'synthetic-backup');
   let child, base, logs;

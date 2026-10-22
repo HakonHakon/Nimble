@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nimble — Editor</title>
+<link rel="stylesheet" href="/assets/editor/editor.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">n.</div><div class="brand-word">nimble</div><span class="brand-label" id="siteName">Editor</span></div>
+    <label class="page-picker"><span class="visually-hidden">Page</span><select id="pageSelect" aria-label="Page"></select></label>
+    <div class="devices" id="devices" role="group" aria-label="Breakpoint"></div>
+    <button class="btn btn-icon" id="bpManage" title="Manage breakpoints" aria-label="Manage breakpoints">⋯</button>
+    <span class="width-label" id="widthLabel"></span>
+    <div class="view-toggles" role="group" aria-label="Canvas aids">
+      <button class="toggle" id="snapToggle" data-pref="snap" aria-pressed="true" title="Snap to guides and elements (hold Ctrl to bypass)">Snap</button>
+      <button class="toggle" id="rulerToggle" data-pref="rulers" aria-pressed="true" title="Rulers and guides">Rulers</button>
+      <button class="toggle" id="gridToggle" data-pref="grid" aria-pressed="false" title="Show grid lines of the selected layout">Grid</button>
+    </div>
+    <div class="top-actions">
+      <span class="save-state" id="saveState" role="status">Loading…</span>
+      <button class="btn btn-icon" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+      <button class="btn btn-icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button class="btn" id="templatesBtn">Templates</button>
+      <button class="btn btn-icon" id="helpBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+      <button class="btn" id="previewBtn">Preview</button>
+      <button class="btn btn-primary" id="publishBtn" disabled>Publish</button>
+      <span class="avatar" id="userAvatar" aria-hidden="true"></span>
+    </div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <div class="workspace">
+    <nav class="rail" aria-label="Editor tools">
+      <button class="rail-button" data-tool="add" aria-pressed="false"><span aria-hidden="true">＋</span>Add</button>
+      <button class="rail-button" data-tool="layers" aria-pressed="true"><span aria-hidden="true">☰</span>Layers</button>
+      <button class="rail-button" data-tool="pages" aria-pressed="false"><span aria-hidden="true">▤</span>Pages</button>
+      <button class="rail-button" data-tool="media" aria-pressed="false"><span aria-hidden="true">▧</span>Media</button>
+      <button class="rail-button" data-tool="site" aria-pressed="false"><span aria-hidden="true">⚙</span>Site</button>
+    </nav>
+    <aside class="left-panel">
+      <div class="tool-panel" data-panel="add" id="addPanel" hidden></div>
+      <div class="tool-panel" data-panel="layers" id="layersPanel"></div>
+      <div class="tool-panel" data-panel="pages" id="pagesPanel" hidden></div>
+      <div class="tool-panel" data-panel="media" id="mediaPanel" hidden></div>
+      <div class="tool-panel" data-panel="site" id="sitePanel" hidden></div>
+    </aside>
+    <main class="canvas-area">
+      <div class="canvas-scroll" id="canvasScroll">
+        <div class="frame-stage" id="frameStage">
+          <div class="width-handle" id="widthHandle" role="separator" aria-orientation="vertical" aria-label="Drag to change the preview width" title="Drag to change the preview width"></div>
+          <div class="frame-wrap">
+            <iframe id="canvasFrame" title="Page canvas" sandbox="allow-same-origin"></iframe>
+            <div class="canvas-overlay" id="canvasOverlay" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <aside class="inspector" id="inspector" aria-label="Inspector"></aside>
+  </div>
+</div>
+<div id="modalRoot"></div><div id="toastRoot" aria-live="polite"></div>
+<input id="fileInput" type="file" hidden>
+<script type="module" src="/assets/editor/main.mjs"></script>
+</body>
+</html>
