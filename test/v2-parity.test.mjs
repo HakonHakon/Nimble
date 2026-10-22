@@ -98,7 +98,10 @@ test('PHP and Node reject the same invalid v2 documents', { skip }, async () => 
     mutate(doc => { doc.nodes.copy.children.push('pic'); doc.nodes.pic = { type: 'image', props: { focal: [50, 101] } }; }),
     mutate(doc => { doc.nodes.copy.children.push('gal'); doc.nodes.gal = { type: 'gallery', props: { captions: 'x' } }; }),
     mutate(doc => { doc.nodes.copy.children.push('gal'); doc.nodes.gal = { type: 'gallery', props: { layout: 'carousel' } }; }),
-    mutate(doc => { doc.assets.push({ id: 'snd', kind: 'podcast', name: 'x', url: '/uploads/a.mp3' }); })
+    mutate(doc => { doc.assets.push({ id: 'snd', kind: 'podcast', name: 'x', url: '/uploads/a.mp3' }); }),
+    mutate(doc => { doc.nodes[doc.header].props = { popup: true }; }),
+    mutate(doc => { doc.nodes.copy.place.desktop.pin = 'left'; }),
+    mutate(doc => { doc.nodes.copy.children.push('tb'); doc.nodes.tb = { type: 'tabs', props: { tabStyle: 'boxes' }, children: [] }; })
   ];
   for (const [index, document] of cases.entries()) {
     const js = runJs(document), phpResult = runPhp(document);

@@ -3,6 +3,7 @@
 // Every value is written to the current breakpoint only; inherited values show as placeholders.
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { effective, label, isRoot } from './tree.mjs';
+import { spec } from '/assets/site-model-v2.mjs';
 
 const SIDES = ['Top', 'Right', 'Bottom', 'Left'];
 const LENGTH_UNITS = ['px', '%', 'vw', 'vh', 'rem', 'em'];
@@ -97,6 +98,8 @@ export function createLayoutPanel(ctx) {
   // ---- container section ----
   const rowFor = (node, key, title, body) => row(node, 'layout', key, title, body);
   function containerHtml(node) {
+    // Tabs and accordions arrange their own panels; only the padding applies.
+    if (spec.nodeTypes[node.type].panels) return '<h3>' + esc(label(node)) + '</h3>' + row(node, 'layout', 'padding', 'Padding', boxInput('padding', own(node, 'layout', 'padding'), inherited(node, 'layout', 'padding'))) + '<p class="hint">Add, rename and reorder panels in the Content tab.</p>';
     const layout = eff(node, 'layout'), mode = layout.mode || 'grid', section = isRoot(node.type);
     let html = '<h3>' + (section ? 'Section' : 'Container') + ' layout</h3>';
     html += row(node, 'layout', 'mode', 'Arrange items', segmented('mode', [['grid', '▦ Grid', 'Grid: place items in cells, freely positioned'], ['stack', '☰ Stack', 'Stack: items flow one after another']], mode));
@@ -165,6 +168,14 @@ export function createLayoutPanel(ctx) {
     return html;
   }
 
+  // Pinning: position sticky to the top or bottom of the screen while the parent is visible.
+  function pinHtml(node) {
+    const value = own(node, 'place', 'pin'), from = inherited(node, 'place', 'pin');
+    const select = '<select data-lp-pin aria-label="Pin to screen"><option value="">' + (from ? 'Inherit (' + esc(from) + ')' : 'Not pinned') + '</option>' + [['none', 'Not pinned'], ['top', 'Pin to top'], ['bottom', 'Pin to bottom']].map(([v, text]) => '<option value="' + v + '"' + (value === v ? ' selected' : '') + '>' + text + '</option>').join('') + '</select>';
+    const pinned = (value || from) && (value || from) !== 'none';
+    return row(node, 'place', 'pin', 'Pin to screen', select + (pinned ? '<label>Offset ' + lengthInput('pinOffset', own(node, 'place', 'pinOffset'), inherited(node, 'place', 'pinOffset') || '0', { units: ['px', 'rem', 'vh'] }) + '</label>' : ''),
+      { keys: ['pin', 'pinOffset'], hint: 'Stays on screen while you scroll through its ' + (st().index.get(node.id)?.parent ? 'container' : 'page') + '.' });
+  }
   function render(node) {
     const { doc, index } = st();
     const where = index.get(node.id);
@@ -172,6 +183,7 @@ export function createLayoutPanel(ctx) {
     if (node.children) html += containerHtml(node);
     if (node.children?.length > 1 && st().bp === 'desktop') html += '<div class="lp-row"><div class="lp-head"><span class="lp-label">Reading order</span></div><button class="chip" data-arrange="sortByPosition">Sort layers by position</button><p class="lp-hint">Screen readers, and stacks on smaller screens, follow the Layers order.</p></div>';
     if (where?.parent) html += placementHtml(node, doc.nodes[where.parent]);
+    if (where && !node.props?.popup) html += pinHtml(node);
     return '<div class="lp">' + (html || '<p class="hint">Sections fill the page width. Select an element inside to position it.</p>') + '</div>';
   }
 
@@ -316,6 +328,10 @@ export function createLayoutPanel(ctx) {
       const current = eff(node, 'place').cell || [1, 1, 1, 1];
       const values = [...root.querySelectorAll('[data-lp-cell]')].map((input, i) => Math.max(1, Math.min(48, Number(input.value) || current[i])));
       commit([op(id, 'place', 'cell', values)], 'Grid cell');
+      return true;
+    }
+    if (t.dataset.lpPin !== undefined) {
+      commit([op(id, 'place', 'pin', t.value || undefined), ...(t.value === 'none' || !t.value ? [op(id, 'place', 'pinOffset', undefined)] : [])], 'Pin');
       return true;
     }
     if (t.dataset.lpNum) {

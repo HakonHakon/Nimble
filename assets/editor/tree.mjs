@@ -6,10 +6,12 @@ export const TYPES = {
   image: { label: 'Image', icon: '▨' }, button: { label: 'Button', icon: '⬭' }, video: { label: 'Video', icon: '▶' },
   gallery: { label: 'Gallery', icon: '▦' }, form: { label: 'Contact form', icon: '✉' }, shape: { label: 'Shape', icon: '◆' },
   spacer: { label: 'Spacer', icon: '↕' }, divider: { label: 'Line', icon: '―' }, menu: { label: 'Menu', icon: '☰' }, icon: { label: 'Icon', icon: '★' },
-  audio: { label: 'Audio', icon: '♪' }
+  audio: { label: 'Audio', icon: '♪' }, tabs: { label: 'Tabs', icon: '⊟' }, accordion: { label: 'Accordion', icon: '≡' }
 };
 export const isContainer = type => !!spec.nodeTypes[type]?.container;
 export const isRoot = type => !!spec.nodeTypes[type]?.root;
+// Containers that take dropped elements; tabs and accordions only hold their panels.
+export const acceptsChildren = type => isContainer(type) && !spec.nodeTypes[type].panels;
 
 export function newId(doc, prefix) {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -95,9 +97,10 @@ export const ADDABLE = [
   ['image', 'Image', 'Media', 'picture photo svg'], ['video', 'Video', 'Media', 'youtube vimeo mp4 film'], ['gallery', 'Gallery', 'Media', 'images photos grid'], ['gallery-masonry', 'Masonry gallery', 'Media', 'images photos pinterest columns'], ['slideshow', 'Slideshow', 'Media', 'slider carousel images photos'], ['audio', 'Audio player', 'Media', 'music sound podcast mp3'],
   ['shape', 'Rectangle', 'Shapes and icons', 'box square shape'], ['shape-ellipse', 'Circle', 'Shapes and icons', 'ellipse round shape'], ['shape-blob', 'Blob', 'Shapes and icons', 'organic shape'], ['icon', 'Icon', 'Shapes and icons', 'symbol glyph svg'],
   ['divider', 'Horizontal line', 'Shapes and icons', 'divider rule separator'], ['line-vertical', 'Vertical line', 'Shapes and icons', 'divider separator'], ['spacer', 'Spacer', 'Shapes and icons', 'gap space empty'],
+  ['tabs', 'Tabs', 'Interactive', 'tabbed panels switch'], ['accordion', 'Accordion', 'Interactive', 'faq questions collapse expand'], ['popup', 'Popup', 'Interactive', 'lightbox modal dialog overlay newsletter'], ['repeater', 'Repeater (cards)', 'Interactive', 'list items cards services team'],
   ['menu', 'Menu', 'Navigation', 'navigation nav links pages'], ['form', 'Contact form', 'Forms', 'contact message email']
 ];
-const KIND_TYPES = { heading: 'text', title: 'text', 'text-list': 'text', 'section-full': 'section', 'section-screen': 'section', 'section-columns': 'section', grid: 'container', 'grid-3': 'container', stack: 'container', 'stack-row': 'container', 'button-outline': 'button', 'button-icon': 'button', 'icon-button': 'button', 'shape-ellipse': 'shape', 'shape-blob': 'shape', 'line-vertical': 'divider', 'gallery-masonry': 'gallery', slideshow: 'gallery' };
+const KIND_TYPES = { heading: 'text', title: 'text', 'text-list': 'text', 'section-full': 'section', 'section-screen': 'section', 'section-columns': 'section', grid: 'container', 'grid-3': 'container', stack: 'container', 'stack-row': 'container', 'button-outline': 'button', 'button-icon': 'button', 'icon-button': 'button', 'shape-ellipse': 'shape', 'shape-blob': 'shape', 'line-vertical': 'divider', 'gallery-masonry': 'gallery', slideshow: 'gallery', popup: 'section', repeater: 'container' };
 export const typeOfKind = kind => KIND_TYPES[kind] || kind;
 const LAYOUT_PRESETS = {
   'section-full': { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['60px', '35px', '60px', '35px'], contentWidth: 'auto' }, mobile: { padding: ['40px', '20px', '40px', '20px'] } },
@@ -115,9 +118,34 @@ function buttonNode(type, kind) {
   if (kind === 'icon-button') return { type, props: { label: 'Next', icon: 'arrow-right', hideLabel: true }, style: { desktop: { ...base, padding: ['12px', '12px', '12px', '12px'], radius: ['999px', '999px', '999px', '999px'] } } };
   return { type, props: { label: 'Learn more' }, style: { desktop: base } };
 }
+const PANEL_LAYOUT = { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '12px', padding: ['8px', '0px', '8px', '0px'] } };
+const paragraph = text => ({ type: 'text', props: { doc: [{ t: 'p', c: [{ text }] }] }, place: { desktop: { width: '100%' } } });
+// Elements made of several nodes (tabs, accordion, popup, repeater) return their children in `extra`.
+function compound(doc, kind, id, fresh) {
+  const extra = {};
+  const add = (prefix, node) => { const child = fresh(prefix); extra[child] = { id: child, ...node }; return child; };
+  const panel = (name, text) => add('panel', { type: 'container', name, layout: structuredClone(PANEL_LAYOUT), children: [add('text', paragraph(text))] });
+  if (kind === 'tabs') return { node: { id, type: 'tabs', props: {}, children: [panel('Tab 1', 'Content of the first tab.'), panel('Tab 2', 'Content of the second tab.'), panel('Tab 3', 'Content of the third tab.')], place: { desktop: { width: '100%' } } }, extra };
+  if (kind === 'accordion') return { node: { id, type: 'accordion', props: { firstOpen: true }, children: [panel('What do you offer?', 'Describe what you offer.'), panel('How does it work?', 'Explain the steps.'), panel('What does it cost?', 'Explain your prices.')], place: { desktop: { width: '100%', maxWidth: '760px' } } }, extra };
+  if (kind === 'popup') {
+    const heading = add('text', { type: 'text', props: { doc: [{ t: 'h2', c: [{ text: 'Stay in touch' }] }] }, place: { desktop: { width: '100%' } } });
+    const body = add('text', paragraph('Tell visitors why this matters. Link to this popup from any button or text on the page.'));
+    const button = add('button', { type: 'button', props: { label: 'Got it' }, style: { desktop: { background: { kind: 'color', color: '@accent' }, color: '#ffffff', padding: ['12px', '20px', '12px', '20px'], radius: ['8px', '8px', '8px', '8px'], fontWeight: 700 } } });
+    return { node: { id, type: 'section', name: 'Popup', props: { popup: true, popupWidth: '520px' }, children: [heading, body, button], layout: { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '16px', padding: ['40px', '36px', '40px', '36px'] } }, style: { desktop: { background: { kind: 'color', color: '@bg' }, radius: ['16px', '16px', '16px', '16px'] } } }, extra };
+  }
+  // Repeater: identical cards in a responsive grid. Duplicate a card to add more.
+  const card = n => add('card', { type: 'container', name: 'Card ' + n, layout: { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '10px', padding: ['24px', '24px', '24px', '24px'] } }, style: { desktop: { background: { kind: 'color', color: '@soft' }, radius: ['12px', '12px', '12px', '12px'] } }, place: { desktop: { width: '100%' } },
+    children: [add('icon', { type: 'icon', props: { icon: 'star' }, place: { desktop: { width: '32px', height: '32px' } }, style: { desktop: { color: '@accent' } } }), add('text', { type: 'text', props: { doc: [{ t: 'h3', c: [{ text: 'Item ' + n }] }] }, place: { desktop: { width: '100%' } } }), add('text', paragraph('A short description of this item.'))] });
+  return { node: { id, type: 'container', name: 'Repeater', children: [card(1), card(2), card(3)], layout: { desktop: { mode: 'grid', columns: ['repeat(auto-fit,minmax(220px,1fr))'], columnGap: '20px', rowGap: '20px' } }, place: { desktop: { width: '100%' } } }, extra };
+}
 export function createNode(doc, kind) {
   const type = KIND_TYPES[kind] || kind;
   const id = newId(doc, type === 'section' ? 'section' : type);
+  if (['tabs', 'accordion', 'popup', 'repeater'].includes(kind)) {
+    const used = new Set([id]);
+    const fresh = prefix => { let next; do next = newId(doc, prefix); while (used.has(next)); used.add(next); return next; };
+    return { id, ...compound(doc, kind, id, fresh) };
+  }
   const firstImage = doc.assets.find(asset => asset.kind === 'image')?.url || '';
   const full = { desktop: { width: '100%' } };
   const nodes = {
@@ -159,7 +187,8 @@ export function insertionTarget(doc, index, page, selectedId, type) {
     const position = root && index.get(root).list === 'page' ? page.children.indexOf(root) + 1 : page.children.length;
     return { parent: null, page: pageIndex, position };
   }
-  if (selected && isContainer(doc.nodes[selected].type)) return { parent: selected, page: pageIndex, position: doc.nodes[selected].children.length };
+  // Tabs and accordions only hold panels: new elements go after them (select a panel to add into it).
+  if (selected && isContainer(doc.nodes[selected].type) && !spec.nodeTypes[doc.nodes[selected].type].panels) return { parent: selected, page: pageIndex, position: doc.nodes[selected].children.length };
   if (selected) {
     const parent = index.get(selected).parent;
     return { parent, page: pageIndex, position: doc.nodes[parent].children.indexOf(selected) + 1 };

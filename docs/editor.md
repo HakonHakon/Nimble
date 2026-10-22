@@ -104,6 +104,11 @@ The **Add** panel includes layout presets:
   - *Open images full screen* turns on a lightbox with arrows and Esc.
 - **Audio player:** MP3, M4A, OGG or WAV files from the Media panel or the Upload button.
 - **Images:** a focal point (click the preview) keeps that spot visible when the image is cropped by *fit: cover*. The Design tab has filters: grayscale, sepia, blur, brighten, darken, contrast, saturate and vintage. Filters work on any element and can differ per breakpoint.
+- **Interactive:**
+  - **Tabs** and **Accordion** hold one panel per tab or item. A panel's title is its name; rename, add, remove and reorder panels in the Content tab. On the canvas, clicking a tab or an accordion title shows that panel and selects it. To add elements into a panel, select it first; with the tabs or accordion itself selected, new elements go after it. Accordion items close each other unless *Allow several open* is on (this uses the native `<details name>`).
+  - **Popup** is a page section shown as a modal dialog. It opens from links to it ("Section on this page") or once per visit after the page loads, with an optional delay. In the editor it is shown inline, with a dashed outline.
+  - **Pin to screen** (Layout tab) keeps an element at the top or bottom of the screen while you scroll through its container, with an offset. It can differ per breakpoint.
+  - **Repeater (cards)** adds a responsive grid of matching cards; duplicate a card to add more.
 - **SVG images** can be uploaded in the Media panel like other images. They are shown through `<img>` and served with a sandboxing Content-Security-Policy, so scripts inside an SVG never run.
 
 ## Text editing

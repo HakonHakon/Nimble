@@ -159,6 +159,10 @@ const canvas = createCanvas({
   onPointerDown: (event, id) => {
     if (rich?.owns(event)) return; // clicks inside the text being edited place the caret
     if (rich?.editing) rich.stop();
+    // Tabs and accordion titles switch the panel shown in the editor and select that panel.
+    const tab = event.target.closest?.('[role=tab]'), summary = event.target.closest?.('details.acc-item > summary');
+    const panel = tab ? tab.getAttribute('aria-controls')?.slice(6) : summary?.parentElement.querySelector(':scope > .acc-body > .n')?.id;
+    if (panel && doc().nodes[panel]) { event.preventDefault(); canvas.showPanel(panel, !!summary); select(panel, { source: 'canvas' }); return; }
     transformer.pointerDown(event, id);
   },
   onDoubleClick: (event, id) => { if (id && doc().nodes[id]?.type === 'text' && rich.editing !== id) { select(id, { source: 'canvas' }); rich.start(id, { x: event.clientX, y: event.clientY }); } },

@@ -586,6 +586,7 @@ function nimble_v2_normalize(array $input): array
     $ctx['nodeIds'] = array_fill_keys(array_keys($infos), true);
     $nodes = [];
     foreach ($infos as $id => $info) $nodes[(string)$id] = nimble_v2_node((string)$id, $nodesIn[$id], $info, $ctx);
+    foreach ([$header, $footer] as $id) if ($id !== null && !empty($nodes[$id]['props']['popup'])) nimble_error('Headers and footers cannot be popups.');
 
     $output = ['version' => 2, 'site' => $site, 'design' => $design, 'breakpoints' => $breakpoints, 'assets' => $assets];
     if ($header !== null) $output['header'] = $header;

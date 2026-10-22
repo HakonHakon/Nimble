@@ -53,6 +53,10 @@ v2 replaces the fixed block list with an element tree whose layout, placement an
   - `image.focal` is `[x%, y%]`, rendered as `object-position`.
   - `style.filter` is one of the named presets.
   - Assets can be `image`, `video` or `audio`.
+- **Interactive.**
+  - `tabs` and `accordion` are containers with `panels: true`; each child is a panel titled by its `name`. `tabs` props are `tabAlign`, `tabStyle` and `activeColor`; `accordion` props are `multiple`, `firstOpen` and `activeColor`.
+  - Section props `popup`, `popupOpen` (`link`/`load`), `popupDelay` and `popupWidth` render the section in a `<dialog>`. Headers and footers cannot be popups.
+  - `place.pin` is `none`, `top` or `bottom`, with an optional `pinOffset`; it renders as `position: sticky`.
 - **Saved designs.** `design.presets` is a list of `{ id, name, type, style? }` (up to 50). `style` is a normal breakpoint style map. Applying one copies it to the element.
 - **Rich text.** `props.doc` is a list of blocks (`p`, `h1`–`h6`, `ul`, `ol`).
   - **Blocks** can have:

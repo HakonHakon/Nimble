@@ -9,11 +9,14 @@ const EDITOR_CSS = 'html,body{min-height:100%}iframe,video{pointer-events:none}a
   + '.t-section:empty,.t-container:empty{min-height:72px;outline:1px dashed #c8c5d7;outline-offset:-1px}'
   + '.t-image:empty{min-height:120px;background:repeating-linear-gradient(45deg,#f1f0f6 0 10px,#e7e5f0 10px 20px)}'
   + '.t-text:empty{min-height:1.4em}'
+  + 'dialog.popup{display:block;position:relative;inset:auto;margin:40px auto;outline:2px dashed #9b8cff;outline-offset:6px}dialog.popup::before{content:"Popup";position:absolute;top:-30px;left:0;font:600 12px/1 system-ui,sans-serif;color:#6957ff}'
   + '[contenteditable=true]{-webkit-user-select:text;user-select:text;cursor:text;outline:none}[contenteditable=true] *{-webkit-user-select:text;user-select:text}[contenteditable=true] a{cursor:text}';
 
 export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, onHandleDown, onGuideDown, getHandles, getColumnHandles = () => false, onScroll, onContextMenu = () => {}, onDoubleClick = () => {} }) {
   let currentScale = 1, doc = null, page = null, hoverId = null, selectedId = null, others = [], ready = null, scheduled = false;
   let gesture = null, gridlines = false, guides = { x: [], y: [] }, editingId = null;
+  // Which tab panel is shown and which accordion items are open in the editor (not saved).
+  const shownTabs = new Map(), openItems = new Set();
   const year = new Date().getFullYear(), cssCache = createCssCache();
   const frameDoc = () => frame.contentDocument;
   const element = id => id ? frameDoc()?.getElementById(id) : null;
@@ -58,6 +61,34 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     });
   }
   const options = () => ({ year });
+  function applyPanels() {
+    const d = frameDoc();
+    for (const [tabsId, childId] of shownTabs) {
+      const tabs = d.getElementById(tabsId);
+      if (!tabs || !d.getElementById('panel-' + childId)) { shownTabs.delete(tabsId); continue; }
+      for (const button of tabs.querySelectorAll(':scope > .tab-list > [role=tab]')) {
+        const on = button.getAttribute('aria-controls') === 'panel-' + childId;
+        button.setAttribute('aria-selected', String(on));
+        d.getElementById(button.getAttribute('aria-controls')).hidden = !on;
+      }
+    }
+    for (const childId of openItems) {
+      const details = element(childId)?.parentElement?.closest('details.acc-item');
+      if (details) details.open = true; else openItems.delete(childId);
+    }
+  }
+  // Shows the tab panel or opens the accordion item that contains an element.
+  function revealPanels(id) {
+    let el = element(id);
+    while (el) {
+      const panel = el.closest('.tab-panel'), details = el.closest('details.acc-item');
+      if (panel) shownTabs.set(panel.closest('[data-tabs]').id, panel.id.slice(6));
+      if (details) openItems.add(details.querySelector(':scope > .acc-body > .n').id);
+      el = (panel || details)?.parentElement || null;
+      if (!panel && !details) break;
+    }
+    applyPanels();
+  }
   function css() { frameDoc().getElementById('nimble-site').textContent = siteCss(doc, pageRoots(doc, page), cssCache); }
   function renderAll() {
     const d = frameDoc();
@@ -65,10 +96,14 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     const header = doc.header && page.showHeader ? renderNode(doc, doc.header, page, options()) : '';
     const footer = doc.footer && page.showFooter ? renderNode(doc, doc.footer, page, options()) : '';
     d.getElementById('nimble-root').innerHTML = header + '<main id="content">' + page.children.map(id => renderNode(doc, id, page, options())).join('') + '</main>' + footer;
+    applyPanels();
     css();
   }
   // Re-renders only the changed elements; falls back to a full render when an element is not on screen yet.
-  function renderSome(ids) {
+  function renderSome(changed) {
+    // Panel titles live in the tabs/accordion markup, so a changed panel re-renders its host.
+    const ids = new Set(changed);
+    for (const id of changed) { const host = element(id)?.parentElement?.closest('.tab-panel,.acc-body')?.closest('.t-tabs,.t-accordion'); if (host) ids.add(host.id); }
     const roots = [...ids].filter(id => doc.nodes[id]);
     const skip = new Set();
     for (const id of roots) {
@@ -81,6 +116,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
       if (!current) return renderAll();
       current.outerHTML = renderNode(doc, id, page, options());
     }
+    applyPanels();
     css();
   }
   function schedule() {
@@ -193,6 +229,7 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     },
     select(id, { reveal = false, also = [] } = {}) {
       selectedId = id; others = also.filter(item => item !== id);
+      if (id) revealPanels(id);
       if (reveal) element(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       schedule();
     },
@@ -218,6 +255,12 @@ export function createCanvas({ frame, overlay, onPointerDown, onHover, onKey, on
     setGesture(next) { gesture = next; schedule(); },
     setGridlines(on) { gridlines = on; schedule(); },
     setEditing(id) { editingId = id; schedule(); },
+    // Clicking a tab or an accordion title in the editor shows that panel.
+    showPanel(childId, toggle = false) {
+      const details = element(childId)?.parentElement?.closest('details.acc-item');
+      if (toggle && details?.open) { details.open = false; openItems.delete(childId); schedule(); return; }
+      revealPanels(childId); schedule();
+    },
     setGuides(next) { guides = next; schedule(); },
     redraw: schedule
   };

@@ -129,13 +129,15 @@
     "tag": ["M3 12V4h8l10 10-8 8z", "M9 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"]
   },
   "nodeTypes": {
-    "section": { "container": true, "root": true, "tags": ["section", "header", "footer", "div", "article", "aside", "nav"], "display": "grid" },
+    "section": { "container": true, "root": true, "tags": ["section", "header", "footer", "div", "article", "aside", "nav"], "display": "grid", "props": { "popup": "bool", "popupOpen": "enum:link,load", "popupDelay": "int:0:120", "popupWidth": "size" } },
     "container": { "container": true, "tags": ["div", "article", "aside", "nav", "figure"], "display": "grid" },
     "text": { "display": "block", "props": { "doc": "richtext" } },
     "image": { "display": "block", "props": { "src": "media", "alt": "text:1000", "fit": "enum:cover,contain,fill,none", "focal": "point", "link": "link" } },
     "button": { "display": "inline-flex", "props": { "label": "text:200", "link": "link", "icon": "icon", "iconPosition": "enum:start,end", "hideLabel": "bool" } },
     "video": { "display": "block", "props": { "src": "video", "poster": "media", "title": "text:200", "controls": "bool", "autoplay": "bool", "loop": "bool", "muted": "bool" } },
     "gallery": { "display": "grid", "props": { "images": "mediaList", "captions": "textList", "alt": "text:1000", "layout": "enum:grid,masonry,slider", "minItemWidth": "length", "itemHeight": "length", "gap": "length", "lightbox": "bool", "autoplay": "bool", "interval": "int:2:30" } },
+    "tabs": { "container": true, "panels": true, "display": "block", "props": { "tabAlign": "enum:start,center,end,stretch", "tabStyle": "enum:underline,pills", "activeColor": "color" } },
+    "accordion": { "container": true, "panels": true, "display": "block", "props": { "multiple": "bool", "firstOpen": "bool", "activeColor": "color" } },
     "audio": { "display": "block", "props": { "src": "audio", "title": "text:200", "autoplay": "bool", "loop": "bool" } },
     "form": { "display": "block", "props": { "submitLabel": "text:120", "note": "text:500" } },
     "shape": { "display": "block", "props": { "shape": "enum:rect,ellipse,blob" } },
@@ -171,7 +173,9 @@
     "maxHeight": "size",
     "rotate": "num:-360:360",
     "z": "int:0:9999",
-    "order": "int:-999:999"
+    "order": "int:-999:999",
+    "pin": "enum:none,top,bottom",
+    "pinOffset": "length"
   },
   "style": {
     "color": "color",

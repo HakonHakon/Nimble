@@ -73,9 +73,11 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
     $display = $definition['display'];
     if ($container) $display = ($layout['mode'] ?? null) === 'stack' ? 'flex' : 'grid';
     if ($node['type'] === 'gallery' && in_array($node['props']['layout'] ?? null, ['masonry', 'slider'], true)) $display = 'block';
+    if (!empty($definition['panels'])) $display = 'block';
     $rules[$selector]['display'] = nimble_v2_hidden_at($node, $ids, $index) ? 'none' : $display;
     if ($container) {
-        if ($display === 'flex') {
+        if (!empty($definition['panels'])) { /* tabs and accordions lay out their own panels */ }
+        elseif ($display === 'flex') {
             $rules[$selector]['flex-direction'] = $layout['direction'] ?? 'column';
             $rules[$selector]['flex-wrap'] = !empty($layout['wrap']) ? 'wrap' : 'nowrap';
             if (isset($layout['justify'])) $rules[$selector]['justify-content'] = NIMBLE_V2_FLEX[$layout['justify']];
@@ -112,7 +114,21 @@ function nimble_v2_node_rules(array &$rules, array $site, array $node, ?array $p
         if (!empty($place['rotate'])) $rules[$selector]['transform'] = 'rotate(' . nimble_v2_num_string($place['rotate']) . 'deg)';
         if (isset($place['z'])) $rules[$selector]['z-index'] = (string)$place['z'];
     }
+    // Pinned elements stick to the top or bottom of the viewport while their container is on screen.
+    if (($place['pin'] ?? null) === 'none') $rules[$selector]['position'] = 'relative';
+    elseif (isset($place['pin'])) {
+        $rules[$selector]['position'] = 'sticky';
+        $rules[$selector][$place['pin']] = $place['pinOffset'] ?? '0px';
+        if (!isset($place['z'])) $rules[$selector]['z-index'] = '20';
+    }
     $props = $node['props'] ?? [];
+    if ($node['type'] === 'section' && !empty($props['popup'])) $rules[$selector]['width'] = 'min(calc(100vw - 32px),' . (isset($props['popupWidth']) && $props['popupWidth'] !== 'auto' ? $props['popupWidth'] : '640px') . ')';
+    if ($node['type'] === 'tabs') {
+        if (($props['tabAlign'] ?? null) === 'stretch') $rules[$selector . '>.tab-list>[role=tab]']['flex'] = '1';
+        elseif (isset($props['tabAlign'])) $rules[$selector . '>.tab-list']['justify-content'] = NIMBLE_V2_FLEX[$props['tabAlign']];
+        if (isset($props['activeColor'])) $rules[$selector . '>.tab-list>[aria-selected=true]']['color'] = nimble_v2_color_value($props['activeColor']);
+    }
+    if ($node['type'] === 'accordion' && isset($props['activeColor'])) $rules[$selector . '>details[open]>summary']['color'] = nimble_v2_color_value($props['activeColor']);
     if ($node['type'] === 'image' && isset($props['fit'])) $rules[$selector . ' img']['object-fit'] = $props['fit'];
     if ($node['type'] === 'image' && isset($props['focal'])) $rules[$selector . ' img']['object-position'] = nimble_v2_num_string($props['focal'][0]) . '% ' . nimble_v2_num_string($props['focal'][1]) . '%';
     if ($node['type'] === 'gallery') {
@@ -317,6 +333,25 @@ function nimble_v2_rich_html(array $site, array $doc, array $options): string
     }
     return $html;
 }
+// Tabs: a tab list with one panel per child. Accordion: one <details> per child; without "multiple"
+// the items share a name, so opening one closes the others. Panel titles are the children's names.
+function nimble_v2_panels_html(array $site, array $node, array $page, array $options, string $attributes, string $media): string
+{
+    $props = $node['props'] ?? [];
+    $labels = [];
+    foreach ($node['children'] as $i => $child) $labels[] = ($site['nodes'][$child]['name'] ?? '') !== '' ? $site['nodes'][$child]['name'] : ($node['type'] === 'tabs' ? 'Tab ' : 'Item ') . ($i + 1);
+    $e = 'nimble_v2_e';
+    if ($node['type'] === 'tabs') {
+        $html = '<div' . (($props['tabStyle'] ?? null) === 'pills' ? str_replace(' t-tabs"', ' t-tabs is-pills"', $attributes) : $attributes) . ' data-tabs>' . $media . '<div class="tab-list" role="tablist">';
+        foreach ($node['children'] as $i => $child) $html .= '<button type="button" role="tab" id="tab-' . $e($child) . '" aria-controls="panel-' . $e($child) . '" aria-selected="' . ($i === 0 ? 'true' : 'false') . '"' . ($i ? ' tabindex="-1"' : '') . '>' . $e($labels[$i]) . '</button>';
+        $html .= '</div>';
+        foreach ($node['children'] as $i => $child) $html .= '<div class="tab-panel" role="tabpanel" id="panel-' . $e($child) . '" aria-labelledby="tab-' . $e($child) . '"' . ($i ? ' hidden' : '') . '>' . nimble_v2_render_node($site, $child, $page, $options) . '</div>';
+        return $html . '</div>';
+    }
+    $html = '<div' . $attributes . '>' . $media;
+    foreach ($node['children'] as $i => $child) $html .= '<details class="acc-item"' . (!empty($props['multiple']) ? '' : ' name="acc-' . $e($node['id']) . '"') . ($i === 0 && !empty($props['firstOpen']) ? ' open' : '') . '><summary>' . $e($labels[$i]) . nimble_v2_icon_svg('chevron-down') . '</summary><div class="acc-body">' . nimble_v2_render_node($site, $child, $page, $options) . '</div></details>';
+    return $html . '</div>';
+}
 function nimble_v2_render_node(array $site, string $id, array $page, array $options): string
 {
     $spec = nimble_v2_spec();
@@ -330,8 +365,12 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
         $videos = nimble_v2_video_backgrounds($node);
         foreach ($videos as $i => $item) $inner .= '<video class="bg-video bg-v' . $i . '" src="' . nimble_v2_e($item['src']) . '"' . ($item['poster'] !== null ? ' poster="' . nimble_v2_e($item['poster']) . '"' : '') . ' autoplay muted loop playsinline preload="metadata" aria-hidden="true"></video>';
         if ($videos) $inner .= '<span class="bg-overlay" aria-hidden="true"></span>';
+        if ($node['type'] === 'tabs' || $node['type'] === 'accordion') return nimble_v2_panels_html($site, $node, $page, $options, $attributes, $inner);
         foreach ($node['children'] as $child) $inner .= nimble_v2_render_node($site, $child, $page, $options);
-        return '<' . $tag . $attributes . '>' . $inner . '</' . $tag . '>';
+        $html = '<' . $tag . $attributes . '>' . $inner . '</' . $tag . '>';
+        // A popup section is a modal dialog, opened by links to the section or when the page loads.
+        if ($node['type'] === 'section' && !empty($props['popup'])) return '<dialog class="popup" id="popup-' . nimble_v2_e($node['id']) . '" data-popup="' . nimble_v2_e($node['id']) . '"' . (($props['popupOpen'] ?? null) === 'load' ? ' data-open="load" data-delay="' . ($props['popupDelay'] ?? 0) . '"' : '') . ' aria-label="' . nimble_v2_e(($node['name'] ?? '') !== '' ? $node['name'] : 'Popup') . '">' . $html . '<button type="button" class="popup-close" aria-label="Close">×</button></dialog>';
+        return $html;
     }
     if ($node['type'] === 'text') return '<div' . $attributes . '>' . nimble_v2_rich_html($site, $props['doc'] ?? [], $options) . '</div>';
     if ($node['type'] === 'image') {

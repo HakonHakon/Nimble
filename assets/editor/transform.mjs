@@ -3,7 +3,7 @@
 // while the pointer is down and commit a single undoable step when it is released.
 import { box, layoutBox, rotationOf, contentBox, gridGeometry, cellAt, cellOrigin, rotate, pxValue } from './geometry.mjs';
 import { snapTargets, snapBox } from './snap.mjs';
-import { isContainer, isRoot, ancestors, effective, moveOps, label } from './tree.mjs';
+import { isContainer, isRoot, ancestors, effective, moveOps, label, acceptsChildren } from './tree.mjs';
 
 const SNAP_PX = 6;
 const POSITION_KEYS = ['cell', 'justifySelf', 'alignSelf', 'margin', 'order'];
@@ -49,7 +49,7 @@ export function createTransformer(canvas, ctx) {
     const d = canvas.document(), dragged = canvas.element(id), { index, doc } = state();
     for (const hit of d.elementsFromPoint(x, y)) {
       let el = hit.closest('.n');
-      while (el && (dragged.contains(el) || !isContainer(doc.nodes[el.id]?.type))) el = el.parentElement?.closest('.n');
+      while (el && (dragged.contains(el) || !acceptsChildren(doc.nodes[el.id]?.type))) el = el.parentElement?.closest('.n');
       if (el && !ancestors(index, el.id).includes(id) && index.has(el.id)) return el.id;
     }
     return null;
@@ -441,7 +441,7 @@ export function createTransformer(canvas, ctx) {
     let parentId = null;
     for (const hit of canvas.document().elementsFromPoint(pointer.x, pointer.y)) {
       let el = hit.closest('.n');
-      while (el && !isContainer(doc.nodes[el.id]?.type)) el = el.parentElement?.closest('.n');
+      while (el && !acceptsChildren(doc.nodes[el.id]?.type)) el = el.parentElement?.closest('.n');
       if (el && index.has(el.id)) { parentId = el.id; break; }
     }
     if (!parentId) return null;

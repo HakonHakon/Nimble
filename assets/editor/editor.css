@@ -292,3 +292,5 @@ code{background:var(--soft);padding:2px 6px;border-radius:5px}
 .ml-row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:6px;align-items:center}
 .ml-row img{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
 .ml-tools{display:flex;gap:2px}.ml-tools .icon-btn{width:24px;height:26px;padding:0}
+/* Phase 8c: interactive elements */
+.panel-row{grid-template-columns:22px minmax(0,1fr) auto}.panel-index{color:var(--muted);font-weight:600;text-align:center}

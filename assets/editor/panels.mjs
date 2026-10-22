@@ -2,7 +2,7 @@
 import { escapeHtml as esc } from '/assets/render-v2.mjs';
 import { ADDABLE, TYPES, createNode, insertionTarget, newId, descendants, typeOfKind } from './tree.mjs';
 
-const KIND_ICONS = { heading: 'H', title: 'H1', 'text-list': '•≡', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭', 'button-outline': '▭', 'button-icon': '→', 'icon-button': '◉', 'shape-ellipse': '●', 'shape-blob': '⬮', 'line-vertical': '│', 'gallery-masonry': '▥', slideshow: '◧' };
+const KIND_ICONS = { heading: 'H', title: 'H1', 'text-list': '•≡', grid: '▦', 'grid-3': '▦', stack: '☰', 'stack-row': '⇉', 'section-columns': '◫', 'section-screen': '⛶', 'section-full': '▭', 'button-outline': '▭', 'button-icon': '→', 'icon-button': '◉', 'shape-ellipse': '●', 'shape-blob': '⬮', 'line-vertical': '│', 'gallery-masonry': '▥', slideshow: '◧', popup: '❐', repeater: '▤' };
 
 export function createAddPanel(root, ctx) {
   let query = '';
@@ -25,8 +25,8 @@ export function createAddPanel(root, ctx) {
   root.querySelector('.add-search').addEventListener('input', event => { query = event.target.value; render(); });
 
   // Builds the operations that insert `node` at a target from insertionTarget() or a canvas drop.
-  function insertOps(doc, page, id, node, target) {
-    const ops = [{ path: ['nodes', id], value: node }];
+  function insertOps(doc, page, id, node, target, extra = {}) {
+    const ops = [{ path: ['nodes', id], value: node }, ...Object.entries(extra).map(([child, value]) => ({ path: ['nodes', child], value }))];
     if (!target) {
       // Empty page: create a section first and put the element inside it.
       const section = createNode(doc, 'section');
@@ -42,14 +42,14 @@ export function createAddPanel(root, ctx) {
   function add(kind, text, drop = null) {
     if (!ctx.editable()) return;
     const { doc, index, page, selected, bp } = ctx.state();
-    const { id, node } = createNode(doc, kind);
+    const { id, node, extra } = createNode(doc, kind);
     let target;
     if (drop) {
       target = { parent: drop.kind === 'root' ? null : drop.parent, position: drop.position };
       // In a grid the element is docked where it was dropped (on this breakpoint).
       if (drop.kind === 'grid') node.place = { ...(node.place || {}), [bp]: { ...(node.place?.[bp] || {}), ...drop.values } };
     } else target = insertionTarget(doc, index, page, selected, node.type);
-    if (!ctx.commit(insertOps(doc, page, id, node, target), { label: 'Add ' + text })) return;
+    if (!ctx.commit(insertOps(doc, page, id, node, target, extra), { label: 'Add ' + text })) return;
     ctx.select(id, { source: 'add', reveal: true });
     if (node.children) ctx.showLayout?.();
   }

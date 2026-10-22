@@ -95,3 +95,50 @@ document.querySelectorAll('[data-lightbox]').forEach(gallery => {
   };
   items.forEach((item, i) => item.addEventListener('click', event => { event.preventDefault(); open(i); }));
 });
+
+// Tabs: click or arrow keys switch panels (WAI-ARIA tabs pattern with automatic activation).
+document.querySelectorAll('[data-tabs]').forEach(tabs => {
+  const buttons = [...tabs.querySelectorAll(':scope > .tab-list > [role=tab]')];
+  const select = (button, focus = false) => {
+    for (const item of buttons) {
+      const on = item === button;
+      item.setAttribute('aria-selected', String(on));
+      item.tabIndex = on ? 0 : -1;
+      document.getElementById(item.getAttribute('aria-controls')).hidden = !on;
+    }
+    if (focus) button.focus();
+  };
+  buttons.forEach((button, i) => {
+    button.addEventListener('click', () => select(button));
+    button.addEventListener('keydown', event => {
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: buttons.length - 1 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      select(buttons[(next + buttons.length) % buttons.length], true);
+    });
+  });
+});
+
+// Popups: links to a popup section open it; "on load" popups open once per visit after their delay.
+(() => {
+  const dialogs = new Map([...document.querySelectorAll('dialog[data-popup]')].map(dialog => [dialog.dataset.popup, dialog]));
+  if (!dialogs.size) return;
+  const open = dialog => { if (!dialog.open) dialog.showModal(); };
+  for (const dialog of dialogs.values()) {
+    dialog.querySelector('.popup-close').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+    if (dialog.dataset.open === 'load') {
+      const key = 'nimble-popup-' + dialog.dataset.popup;
+      let seen = false;
+      try { seen = sessionStorage.getItem(key) === '1'; sessionStorage.setItem(key, '1'); } catch { /* storage unavailable */ }
+      if (!seen) setTimeout(() => open(dialog), Number(dialog.dataset.delay || 0) * 1000);
+    }
+  }
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    const dialog = link && dialogs.get(decodeURIComponent(link.getAttribute('href').slice(1)));
+    if (!dialog) return;
+    event.preventDefault();
+    open(dialog);
+  });
+})();

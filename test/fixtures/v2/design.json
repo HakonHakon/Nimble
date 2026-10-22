@@ -14,7 +14,7 @@
       { "id": "empty", "name": "  Card  ", "type": "container" }
     ]
   },
-  "pages": [ { "id": "home", "name": "Home", "children": ["hero", "plain"] } ],
+  "pages": [ { "id": "home", "name": "Home", "children": ["hero", "plain", "promo"] } ],
   "nodes": {
     "hero": { "type": "section", "children": ["title", "cta"],
       "style": {
@@ -28,13 +28,21 @@
       { "t": "ul", "lineHeight": 2, "items": [ [ { "text": "One", "highlight": "@brand" } ], [ { "text": "Two", "size": "1.2em" } ] ] }
     ] }, "hover": { "color": "@brand", "duration": 400 }, "style": { "desktop": { "blendMode": "difference" } } },
     "cta": { "type": "button", "props": { "label": "Go" }, "hover": { "background": { "kind": "gradient", "angle": 90, "stops": [ { "color": "@brand", "at": 0 }, { "color": "#ff00aa", "at": 100 } ] }, "borderColor": "#000", "shadow": [ { "y": "8px", "blur": "24px", "color": "#00000040" } ], "opacity": 0.9, "scale": 1.05, "translateY": "-2px" }, "place": { "desktop": { "rotate": 3 } } },
-    "plain": { "type": "section", "hover": { "duration": 0 }, "children": ["star", "linked-icon", "icon-button", "icon-only", "vline", "hline", "g-captions", "g-masonry", "g-slider", "song", "photo"] },
+    "plain": { "type": "section", "hover": { "duration": 0 }, "children": ["star", "linked-icon", "icon-button", "icon-only", "vline", "hline", "g-captions", "g-masonry", "g-slider", "song", "photo", "faq", "info-tabs"] },
+    "faq": { "type": "accordion", "props": { "firstOpen": true, "activeColor": "@brand" }, "children": ["faq-1", "faq-2"] },
+    "faq-1": { "type": "container", "name": "What is it?", "children": ["faq-1-text"] },
+    "faq-1-text": { "type": "text", "props": { "doc": [ { "t": "p", "c": [ { "text": "A website builder." } ] } ] } },
+    "faq-2": { "type": "container", "children": [] },
+    "info-tabs": { "type": "tabs", "props": { "tabAlign": "stretch", "tabStyle": "pills", "activeColor": "#ff0066" }, "children": ["tab-a", "tab-b"], "layout": { "desktop": { "padding": ["8px", "8px", "8px", "8px"], "mode": "stack" } } },
+    "tab-a": { "type": "container", "name": "Overview <1>", "children": [] },
+    "tab-b": { "type": "text", "props": { "doc": [ { "t": "p", "c": [ { "text": "Details" } ] } ] } },
+    "promo": { "type": "section", "name": "Newsletter", "props": { "popup": true, "popupOpen": "load", "popupDelay": 3, "popupWidth": "480px" }, "children": [] },
     "g-captions": { "type": "gallery", "props": { "images": ["/uploads/a.jpg", "/uploads/b.jpg", "/uploads/c.jpg"], "captions": ["First <b>", "", "Third", "", ""], "alt": "Work" } },
     "g-masonry": { "type": "gallery", "props": { "images": ["/uploads/a.jpg", "/uploads/b.jpg"], "layout": "masonry", "minItemWidth": "240px", "gap": "12px", "lightbox": true } },
     "g-slider": { "type": "gallery", "props": { "images": ["/uploads/a.jpg", "/uploads/b.jpg"], "captions": ["One", "Two"], "layout": "slider", "itemHeight": "60vh", "autoplay": true, "interval": 7, "lightbox": true } },
     "song": { "type": "audio", "props": { "src": "/uploads/song.mp3", "title": "Our jingle", "loop": true } },
     "photo": { "type": "image", "props": { "src": "/uploads/a.jpg", "alt": "A photo", "focal": [20, 80.5] }, "style": { "desktop": { "filter": "vintage" }, "mobile": { "filter": "none" } } },
-    "star": { "type": "icon", "props": { "icon": "star", "weight": 1.5 }, "style": { "desktop": { "color": "@brand" } }, "place": { "desktop": { "width": "48px", "height": "48px" } } },
+    "star": { "type": "icon", "props": { "icon": "star", "weight": 1.5 }, "style": { "desktop": { "color": "@brand" } }, "place": { "desktop": { "width": "48px", "height": "48px", "pin": "top", "pinOffset": "10px" }, "mobile": { "pin": "none" } } },
     "linked-icon": { "type": "icon", "props": { "icon": "mail", "label": "Email us", "link": { "to": "email", "address": "hi@example.com" } } },
     "icon-button": { "type": "button", "props": { "label": "Next", "icon": "arrow-right", "iconPosition": "end", "link": { "to": "url", "href": "https://example.com" } } },
     "icon-only": { "type": "button", "props": { "label": "Search", "icon": "search", "hideLabel": true } },

@@ -2,7 +2,7 @@
 // write to the current breakpoint only and show the inherited value when no override exists.
 import { spec } from '/assets/site-model-v2.mjs';
 import { escapeHtml as esc, iconSvg } from '/assets/render-v2.mjs';
-import { TYPES, label, ancestors } from './tree.mjs';
+import { TYPES, label, ancestors, descendants, newId } from './tree.mjs';
 import { hiddenAt } from './layers.mjs';
 import { createLayoutPanel } from './layout-panel.mjs';
 import { overridesAt, resetOps } from './breakpoints.mjs';
@@ -17,6 +17,7 @@ const LABELS = {
   src: 'Source', alt: 'Alt text', fit: 'Image fit', link: 'Link', label: 'Label', poster: 'Poster image', title: 'Title', controls: 'Show controls', autoplay: 'Autoplay (muted)',
   loop: 'Loop', muted: 'Muted', images: 'Images (one URL per line)', minItemWidth: 'Min item width', itemHeight: 'Item height', gap: 'Gap', submitLabel: 'Button label',
   note: 'Privacy note', shape: 'Shape', orientation: 'Orientation', activeColor: 'Current page colour', doc: 'Text',
+  popup: 'Show as a popup', popupOpen: 'Opens', popupDelay: 'Delay after load (s)', popupWidth: 'Popup width', tabAlign: 'Tab alignment', tabStyle: 'Tab style', multiple: 'Allow several open', firstOpen: 'First item open',
   filter: 'Filter', focal: 'Focal point', layout: 'Layout', lightbox: 'Open images full screen', interval: 'Seconds per slide', captions: 'Captions',
   icon: 'Icon', iconPosition: 'Icon position', hideLabel: 'Show icon only', thickness: 'Thickness', lineStyle: 'Line style', weight: 'Stroke width',
   blendMode: 'Blend mode', scrollEffect: 'Scroll effect', borderColor: 'Border colour', scale: 'Scale', translateY: 'Move up/down', duration: 'Transition (ms)'
@@ -248,6 +249,34 @@ export function createInspector(root, ctx) {
       return '<div class="field" data-group="props" data-key="' + key + '" data-type="' + esc(type) + '">' + head + body + '</div>';
     }).join('');
   }
+  // Tabs and accordion panels: the children, titled by their names.
+  function panelsControl(node) {
+    const { doc } = ctx.state(), noun = node.type === 'tabs' ? 'Tab' : 'Item';
+    return '<div class="field"><div class="field-head"><label>' + (node.type === 'tabs' ? 'Tabs' : 'Items') + '</label></div><div class="ml">' + node.children.map((child, i) => '<div class="ml-row panel-row" data-panel="' + i + '"><span class="panel-index">' + (i + 1) + '</span><input data-panel-name="' + esc(child) + '" value="' + esc(doc.nodes[child].name || '') + '" placeholder="' + noun + ' ' + (i + 1) + '" maxlength="80" aria-label="' + noun + ' ' + (i + 1) + ' title">'
+      + '<span class="ml-tools"><button type="button" class="icon-btn" data-panel-move="-1" aria-label="Move ' + noun.toLowerCase() + ' ' + (i + 1) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button><button type="button" class="icon-btn" data-panel-move="1" aria-label="Move ' + noun.toLowerCase() + ' ' + (i + 1) + ' down"' + (i === node.children.length - 1 ? ' disabled' : '') + '>↓</button><button type="button" class="icon-btn" data-panel-remove aria-label="Remove ' + noun.toLowerCase() + ' ' + (i + 1) + '"' + (node.children.length < 2 ? ' disabled' : '') + '>×</button></span></div>').join('')
+      + '<button type="button" class="btn btn-small" data-panel-add>+ ' + noun + '</button></div><p class="hint">Click a ' + noun.toLowerCase() + ' title on the canvas to show and edit it.</p></div>';
+  }
+  function panelOps(event) {
+    const { doc, selected } = ctx.state(), node = doc.nodes[selected];
+    const children = node.children.slice(), row = event.target.closest('[data-panel]'), i = row ? Number(row.dataset.panel) : -1;
+    const move = event.target.closest('[data-panel-move]');
+    if (move) {
+      const j = i + Number(move.dataset.panelMove);
+      [children[i], children[j]] = [children[j], children[i]];
+      return ctx.commit([{ path: ['nodes', selected, 'children'], value: children }], { label: 'Reorder' });
+    }
+    if (event.target.closest('[data-panel-remove]')) {
+      const [removed] = children.splice(i, 1);
+      return ctx.commit([{ path: ['nodes', selected, 'children'], value: children }, ...descendants(doc, removed).map(id => ({ path: ['nodes', id], value: undefined }))], { label: 'Remove panel' });
+    }
+    const panel = newId(doc, 'panel'), text = newId(doc, 'text');
+    const name = (node.type === 'tabs' ? 'Tab ' : 'Item ') + (children.length + 1);
+    return ctx.commit([
+      { path: ['nodes', text], value: { id: text, type: 'text', props: { doc: [{ t: 'p', c: [{ text: 'New content.' }] }] }, place: { desktop: { width: '100%' } } } },
+      { path: ['nodes', panel], value: { id: panel, type: 'container', name, layout: { desktop: { mode: 'stack', direction: 'column', align: 'start', rowGap: '12px', padding: ['8px', '0px', '8px', '0px'] } }, children: [text] } },
+      { path: ['nodes', selected, 'children'], value: [...children, panel] }
+    ], { label: 'Add panel' });
+  }
   // Gallery images with captions: reorder, remove, add from the library or upload.
   function galleryControl(images, captions) {
     const library = ctx.state().doc.assets.filter(asset => asset.kind === 'image');
@@ -297,7 +326,8 @@ export function createInspector(root, ctx) {
     const bpInfo = bp === 'desktop' ? 'Desktop — base design' : (doc.breakpoints.find(item => item.id === bp)?.name || bp) + ' — overrides at ≤' + doc.breakpoints.find(item => item.id === bp)?.max + 'px';
     const chain = ancestors(index, selected).map(id => '<button class="crumb' + (id === selected ? ' current' : '') + '" data-crumb="' + esc(id) + '">' + esc(label(doc.nodes[id])) + '</button>').join('<span>›</span>');
     let body = '';
-    if (tab === 'content') body = spec.nodeTypes[node.type].props ? propFields(node) : '<p class="hint">' + esc(TYPES[node.type].label) + ' with ' + (node.children?.length || 0) + ' element(s). Use Add to place elements inside it, or drag them in Layers.</p>';
+    if (tab === 'content') body = (spec.nodeTypes[node.type].panels ? panelsControl(node) : '') + (spec.nodeTypes[node.type].props ? propFields(node) : '<p class="hint">' + esc(TYPES[node.type].label) + ' with ' + (node.children?.length || 0) + ' element(s). Use Add to place elements inside it, or drag them in Layers.</p>')
+      + (node.props?.popup ? '<p class="hint">Link to this popup from a button or text: choose “Section on this page” and pick <strong>' + esc(label(node)) + '</strong>.</p>' : '');
     // Below desktop, show how many values this element overrides here, with a one-click reset.
     const overrides = bp === 'desktop' ? [] : overridesAt(node, bp);
     const bpName = doc.breakpoints.find(item => item.id === bp)?.name || bp;
@@ -418,6 +448,7 @@ export function createInspector(root, ctx) {
     if (event.target.closest('[data-part=remove],[data-part=add-block]')) return commitRich(event.target.closest('[data-part]'));
     if (event.target.closest('[data-delete]')) return ctx.remove(ctx.state().selected);
     if (event.target.closest('[data-edit-text]')) return void ctx.editText(ctx.state().selected);
+    if (event.target.closest('[data-panel-move],[data-panel-remove],[data-panel-add]')) return void panelOps(event);
     const pointPick = event.target.closest('[data-point-pick]');
     if (pointPick && field) {
       const r = pointPick.getBoundingClientRect();
@@ -459,6 +490,7 @@ export function createInspector(root, ctx) {
     if (event.target.closest('.lp')) { layoutPanel.onChange(event, root); return; }
     if (!ctx.editable()) return;
     if (event.target.matches('[data-preset-apply]')) return applyPreset(event.target.value);
+    if (event.target.matches('[data-panel-name]')) return void ctx.commit([{ path: ['nodes', event.target.dataset.panelName, 'name'], value: event.target.value.trim() || undefined }], { label: 'Rename panel' });
     if (event.target.matches('[data-ml-add]') && event.target.value) { const { images, captions } = galleryState(); return void commitGallery([...images, event.target.value], captions); }
     if (event.target.matches('[data-ml-caption]')) { const { images, captions } = galleryState(); captions[Number(event.target.dataset.mlCaption)] = event.target.value.trim(); return void commitGallery(images, captions); }
     const target = event.target, field = target.closest('.field');
