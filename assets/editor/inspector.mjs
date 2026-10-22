@@ -1,6 +1,6 @@
 // Inspector: tabs generated from lib/nimble-spec.json. Responsive groups (layout, placement, style)
 // write to the current breakpoint only and show the inherited value when no override exists.
-import { spec } from '/assets/site-model-v2.mjs';
+import { spec, DEFAULT_FORM_FIELDS } from '/assets/site-model-v2.mjs';
 import { escapeHtml as esc, iconSvg } from '/assets/render-v2.mjs';
 import { TYPES, label, ancestors, descendants, newId } from './tree.mjs';
 import { hiddenAt } from './layers.mjs';
@@ -17,6 +17,7 @@ const LABELS = {
   src: 'Source', alt: 'Alt text', fit: 'Image fit', link: 'Link', label: 'Label', poster: 'Poster image', title: 'Title', controls: 'Show controls', autoplay: 'Autoplay (muted)',
   loop: 'Loop', muted: 'Muted', images: 'Images (one URL per line)', minItemWidth: 'Min item width', itemHeight: 'Item height', gap: 'Gap', submitLabel: 'Button label',
   note: 'Privacy note', shape: 'Shape', orientation: 'Orientation', activeColor: 'Current page colour', doc: 'Text',
+  fields: 'Fields', success: 'Message after sending', redirect: 'Or go to page after sending',
   headerMode: 'Header behaviour', scrollStyle: 'When the page scrolls', source: 'Links', menuMode: 'Menu style', kind: 'Type', html: 'HTML code', url: 'Address (https://)', address: 'Address', zoom: 'Zoom', items: 'Links', size: 'Icon size',
   popup: 'Show as a popup', popupOpen: 'Opens', popupDelay: 'Delay after load (s)', popupWidth: 'Popup width', tabAlign: 'Tab alignment', tabStyle: 'Tab style', multiple: 'Allow several open', firstOpen: 'First item open',
   filter: 'Filter', focal: 'Focal point', layout: 'Layout', lightbox: 'Open images full screen', interval: 'Seconds per slide', captions: 'Captions',
@@ -255,9 +256,39 @@ export function createInspector(root, ctx) {
       else if (type === 'link') body = linkControl(key, value);
       else if (type === 'icon') body = iconPicker(value, node.type !== 'icon');
       else if (type === 'socialList') body = socialControl(value || []);
+      else if (type === 'formFields') body = formFieldsControl(value);
       else body = control(type, value, undefined);
       return '<div class="field" data-group="props" data-key="' + key + '" data-type="' + esc(type) + '">' + head + body + '</div>';
     }).join('');
+  }
+  // Form builder: field rows with type, label, required, width, placeholder and options; "step" splits steps.
+  const FIELD_TYPES = { text: 'Short text', email: 'Email', phone: 'Phone', number: 'Number', textarea: 'Long text', select: 'Drop-down', radio: 'Single choice', checkbox: 'Checkbox(es)', date: 'Date', file: 'File upload', step: '— New step —' };
+  function formFieldsControl(fields) {
+    if (!fields) return '<p class="hint">Standard contact form: name, email and message.</p><button type="button" class="btn btn-small" data-ff-customize>Customize fields</button>';
+    const typeSelect = field => '<select data-ff-type aria-label="Field type">' + Object.entries(FIELD_TYPES).map(([type, text]) => '<option value="' + type + '"' + (type === field.type ? ' selected' : '') + '>' + text + '</option>').join('') + '</select>';
+    const rows = fields.map((field, i) => {
+      const tools = '<span class="ml-tools"><button type="button" class="icon-btn" data-ff-move="-1" aria-label="Move field ' + (i + 1) + ' up"' + (i === 0 ? ' disabled' : '') + '>↑</button><button type="button" class="icon-btn" data-ff-move="1" aria-label="Move field ' + (i + 1) + ' down"' + (i === fields.length - 1 ? ' disabled' : '') + '>↓</button><button type="button" class="icon-btn" data-ff-remove aria-label="Remove field ' + (i + 1) + '">×</button></span>';
+      const head = '<div class="ff-head">' + typeSelect(field) + '<input data-ff-label value="' + esc(field.label) + '" placeholder="' + (field.type === 'step' ? 'Step title' : 'Label') + '" maxlength="200" aria-label="Field ' + (i + 1) + ' label">' + tools + '</div>';
+      if (field.type === 'step') return '<div class="ff-row is-step" data-ff="' + i + '">' + head + '</div>';
+      const choices = ['select', 'radio', 'checkbox'].includes(field.type);
+      return '<div class="ff-row" data-ff="' + i + '">' + head + '<div class="ff-more"><label class="check"><input type="checkbox" data-ff-required' + (field.required ? ' checked' : '') + '>Required</label>'
+        + '<select data-ff-width aria-label="Width"><option value="full">Full width</option><option value="half"' + (field.width === 'half' ? ' selected' : '') + '>Half width</option></select>'
+        + (['text', 'email', 'phone', 'number', 'textarea', 'select'].includes(field.type) ? '<input data-ff-placeholder value="' + esc(field.placeholder || '') + '" placeholder="Placeholder" maxlength="200" aria-label="Placeholder">' : '')
+        + (choices ? '<textarea data-ff-options rows="3" placeholder="' + (field.type === 'checkbox' ? 'Options, one per line (empty: a single checkbox)' : 'Options, one per line') + '" aria-label="Options">' + esc((field.options || []).join('\n')) + '</textarea>' : '') + '</div></div>';
+    }).join('');
+    return '<div class="ff">' + rows + '<div class="pair"><select data-ff-add aria-label="Add a field"><option value="">+ Add field…</option>' + Object.entries(FIELD_TYPES).map(([type, text]) => '<option value="' + type + '">' + text + '</option>').join('') + '</select><button type="button" class="btn btn-small" data-ff-reset>Standard fields</button></div>'
+      + '<p class="hint">Submissions appear in the control panel inbox with every field. Files are kept private.</p></div>';
+  }
+  function commitFields(mutate, label = 'Form fields') {
+    const { doc, selected } = ctx.state();
+    const fields = structuredClone(doc.nodes[selected].props?.fields || DEFAULT_FORM_FIELDS);
+    if (mutate(fields) === false) return;
+    return ctx.commit([{ path: ['nodes', selected, 'props', 'fields'], value: fields }], { label });
+  }
+  function fieldId(fields, type) {
+    let n = 1;
+    while (fields.some(field => field.id === type + '-' + n)) n++;
+    return type + '-' + n;
   }
   // Social links: icon, label and address per link.
   function socialControl(items) {
@@ -473,6 +504,13 @@ export function createInspector(root, ctx) {
     if (event.target.closest('[data-delete]')) return ctx.remove(ctx.state().selected);
     if (event.target.closest('[data-edit-text]')) return void ctx.editText(ctx.state().selected);
     if (event.target.closest('[data-panel-move],[data-panel-remove],[data-panel-add]')) return void panelOps(event);
+    if (event.target.closest('[data-ff-customize]')) return void commitFields(() => {}, 'Customize form');
+    if (event.target.closest('[data-ff-reset]')) return void ctx.commit([{ path: ['nodes', ctx.state().selected, 'props', 'fields'], value: undefined }], { label: 'Standard form fields' });
+    const ffRow = event.target.closest('[data-ff]');
+    if (ffRow && event.target.closest('[data-ff-move],[data-ff-remove]')) {
+      const i = Number(ffRow.dataset.ff), move = event.target.closest('[data-ff-move]');
+      return void commitFields(fields => { if (move) { const j = i + Number(move.dataset.ffMove); [fields[i], fields[j]] = [fields[j], fields[i]]; } else fields.splice(i, 1); });
+    }
     if (event.target.closest('[data-social-add]')) return void commitSocial(items => items.push({ label: '', url: 'https://example.com', icon: 'link' }));
     if (event.target.closest('[data-social-remove]')) return void commitSocial(items => items.splice(Number(event.target.closest('[data-social]').dataset.social), 1));
     const pointPick = event.target.closest('[data-point-pick]');
@@ -516,6 +554,28 @@ export function createInspector(root, ctx) {
     if (event.target.closest('.lp')) { layoutPanel.onChange(event, root); return; }
     if (!ctx.editable()) return;
     if (event.target.matches('[data-preset-apply]')) return applyPreset(event.target.value);
+    if (event.target.matches('[data-ff-add]') && event.target.value) {
+      const type = event.target.value;
+      return void commitFields(fields => { fields.push({ id: fieldId(fields, type), type, label: type === 'step' ? 'Next step' : FIELD_TYPES[type], ...(['select', 'radio'].includes(type) ? { options: ['Option 1', 'Option 2'] } : {}) }); }, 'Add field');
+    }
+    const ffRow = event.target.closest('[data-ff]');
+    if (ffRow) {
+      const i = Number(ffRow.dataset.ff), t = event.target;
+      return void commitFields(fields => {
+        const field = fields[i];
+        if (t.matches('[data-ff-type]')) {
+          field.type = t.value;
+          if (t.value === 'step') for (const key of ['required', 'placeholder', 'width', 'options']) delete field[key];
+          if (['select', 'radio'].includes(t.value) && !field.options) field.options = ['Option 1', 'Option 2'];
+          if (!['select', 'radio', 'checkbox'].includes(t.value)) delete field.options;
+        }
+        if (t.matches('[data-ff-label]')) { if (!t.value.trim() && field.type !== 'step') { render(); return false; } field.label = t.value.trim(); }
+        if (t.matches('[data-ff-required]')) { if (t.checked) field.required = true; else delete field.required; }
+        if (t.matches('[data-ff-width]')) { if (t.value === 'half') field.width = 'half'; else delete field.width; }
+        if (t.matches('[data-ff-placeholder]')) { if (t.value.trim()) field.placeholder = t.value.trim(); else delete field.placeholder; }
+        if (t.matches('[data-ff-options]')) { const options = t.value.split('\n').map(line => line.trim()).filter(Boolean); if (options.length) field.options = options; else if (field.type === 'checkbox') delete field.options; else { render(); return false; } }
+      });
+    }
     const socialRow = event.target.closest('[data-social]');
     if (socialRow) {
       const i = Number(socialRow.dataset.social), t = event.target;

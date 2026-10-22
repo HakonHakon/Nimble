@@ -6,6 +6,7 @@ require_once __DIR__ . '/lib/render.php';
 require_once __DIR__ . '/lib/site-model-v2.php';
 require_once __DIR__ . '/lib/render-v2.php';
 require_once __DIR__ . '/lib/fonts.php';
+require_once __DIR__ . '/lib/forms.php';
 
 $configFile = __DIR__ . '/config.php';
 if (!is_file($configFile)) {
@@ -29,7 +30,9 @@ if ($config['session_days'] < 1 || $config['session_days'] > 30) throw new Runti
 $storage = $config['storage_dir'];
 $dataDir = $storage . '/data';
 $uploadsDir = $storage . '/uploads';
-foreach ([$storage, $dataDir, $uploadsDir] as $directory) {
+// Files sent through forms are private: they are only served to signed-in users from the inbox.
+$formFilesDir = $dataDir . '/form-files';
+foreach ([$storage, $dataDir, $uploadsDir, $formFilesDir] as $directory) {
     if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) throw new RuntimeException('Could not create writable storage directory.');
 }
 $dbConfig = $config['db'] ?? [];
@@ -60,6 +63,7 @@ function setup_database(): void
         "CREATE TABLE IF NOT EXISTS audit_events (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,user_id BIGINT UNSIGNED NULL,action VARCHAR(80) NOT NULL,metadata_json TEXT NULL,created_at DATETIME NOT NULL,INDEX audit_created (created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     ];
     foreach ($tables as $table) db()->exec($table);
+    if (!db()->query("SHOW COLUMNS FROM messages LIKE 'fields_json'")->fetch()) db()->exec('ALTER TABLE messages ADD COLUMN fields_json MEDIUMTEXT NULL');
     db()->prepare("INSERT IGNORE INTO app_settings (`key`,value) VALUES ('contact_secret',?)")->execute([bin2hex(random_bytes(32))]);
 }
 setup_database();
@@ -384,10 +388,37 @@ try {
         nimble_error('Method not allowed.', 405);
     }
     if ($path === '/api/messages' && $method === 'GET') { require_access('messages'); $before = max(0, (int)($_GET['before'] ?? PHP_INT_MAX)); $stmt = db()->prepare('SELECT * FROM messages WHERE id<? ORDER BY id DESC LIMIT 100'); $stmt->execute([$before]); $messages = $stmt->fetchAll(); json_response(200, ['messages' => $messages, 'nextBefore' => count($messages) === 100 ? (int)$messages[count($messages) - 1]['id'] : null]); }
-    if (preg_match('#^/api/messages/[0-9]+$#', $path) && $method === 'DELETE') { $auth = require_access('messages', true); $id = (int)basename($path); db()->prepare('DELETE FROM messages WHERE id=?')->execute([$id]); audit((int)$auth['user']['id'], 'message_deleted', ['id' => $id]); json_response(200, ['ok' => true]); }
+    if (preg_match('#^/api/messages/([0-9]+)/files/([a-f0-9]{32}\.[a-z]{3,4})$#', $path, $match) && $method === 'GET') {
+        require_access('messages');
+        $stmt = db()->prepare('SELECT fields_json FROM messages WHERE id=?'); $stmt->execute([(int)$match[1]]); $entry = null;
+        foreach (json_decode((string)($stmt->fetchColumn() ?: '[]'), true) ?: [] as $item) if (($item['type'] ?? '') === 'file' && ($item['file'] ?? '') === $match[2]) $entry = $item;
+        $file = $GLOBALS['formFilesDir'] . '/' . $match[2];
+        if (!$entry || !is_file($file)) nimble_error('Not found.', 404);
+        header("Content-Security-Policy: default-src 'none'; sandbox");
+        header('Content-Type: ' . (NIMBLE_FORM_FILE_TYPES[pathinfo($file, PATHINFO_EXTENSION)] ?? 'application/octet-stream'));
+        header("Content-Disposition: attachment; filename*=UTF-8''" . rawurlencode($entry['name']));
+        header('Content-Length: ' . filesize($file)); header('Cache-Control: private, no-store');
+        readfile($file); exit;
+    }
+    if (preg_match('#^/api/messages/[0-9]+$#', $path) && $method === 'DELETE') { $auth = require_access('messages', true); $id = (int)basename($path);
+        $stmt = db()->prepare('SELECT fields_json FROM messages WHERE id=?'); $stmt->execute([$id]);
+        foreach (json_decode((string)($stmt->fetchColumn() ?: '[]'), true) ?: [] as $item) if (($item['type'] ?? '') === 'file' && preg_match('/^[a-f0-9]{32}\.[a-z]{3,4}$/', (string)($item['file'] ?? ''))) @unlink($GLOBALS['formFilesDir'] . '/' . $item['file']); db()->prepare('DELETE FROM messages WHERE id=?')->execute([$id]); audit((int)$auth['user']['id'], 'message_deleted', ['id' => $id]); json_response(200, ['ok' => true]); }
     if ($path === '/api/contact-token' && $method === 'GET') { rate_limit('contact-token:' . client_ip(), 100); $site = published_site(); $block = (string)($_GET['block'] ?? ''); if (!nimble_has_form($site, $block)) nimble_error('This form is unavailable.', 404); json_response(200, ['token' => contact_token($block)]); }
     if ($path === '/api/contact' && $method === 'POST') {
-        rate_limit('contact:' . client_ip(), 5); $body = request_body(15000, true); $token = contact_token_data((string)($body['token'] ?? '')); $site = published_site(); if (!nimble_has_form($site, (string)($token['block'] ?? ''))) nimble_error('This form is unavailable.'); if (!empty($body['website'])) json_response(200, ['ok' => true]);
+        rate_limit('contact:' . client_ip(), 5); $body = request_body(22000000, true); $token = contact_token_data((string)($body['token'] ?? '')); $site = published_site(); if (!nimble_has_form($site, (string)($token['block'] ?? ''))) nimble_error('This form is unavailable.'); if (!empty($body['website'])) json_response(200, ['ok' => true]);
+        // Builder forms: values are checked against the published field list; files go to private storage.
+        $fields = nimble_v2_form_definition($site, (string)$token['block']);
+        if ($fields !== null) {
+            $result = nimble_validate_submission($fields, $body['fields'] ?? null);
+            foreach ($result['files'] as $file) {
+                $stored = bin2hex(random_bytes(16)) . '.' . $file['extension'];
+                if (file_put_contents($GLOBALS['formFilesDir'] . '/' . $stored, $file['bytes'], LOCK_EX) === false) throw new RuntimeException('Could not store the file.');
+                $result['entries'][$file['index']]['file'] = $stored;
+            }
+            db()->prepare('INSERT INTO messages(name,email,message,page_id,created_at,fields_json) VALUES(?,?,?,?,?,?)')->execute([$result['name'], $result['email'], $result['message'], (string)$token['block'], timestamp(), json_encode($result['entries'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+            json_response(201, ['ok' => true]);
+        }
+        if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 15000) nimble_error('This request is too large.', 413);
         $name = trim((string)($body['name'] ?? '')); $email = strtolower(trim((string)($body['email'] ?? ''))); $message = trim((string)($body['message'] ?? '')); if ($name === '' || strlen($name) > 120 || !valid_email($email) || $message === '' || strlen($message) > 5000) nimble_error('Enter your name, a valid email, and a message of at most 5,000 characters.'); db()->prepare('INSERT INTO messages(name,email,message,page_id,created_at) VALUES(?,?,?,?,?)')->execute([$name, $email, $message, (string)$token['block'], timestamp()]); json_response(201, ['ok' => true]);
     }
     if (str_starts_with($path, '/api/')) nimble_error('Endpoint not found.', 404);

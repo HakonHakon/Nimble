@@ -65,6 +65,13 @@ v2 replaces the fixed block list with an element tree whose layout, placement an
   - Header props `headerMode` and `scrollStyle` apply only to the section that is `header`.
   - `social.items` is a list of `{ label, url (http(s), mailto:, tel:), icon }`.
 - **Embeds.** `embed` props are `kind` (`html`/`map`/`website`), `html` (at most 20,000 characters), `url` (https only), `address`, `zoom` and `title`. HTML is never inlined into pages: `/embed/<id>.html` serves it with `Content-Security-Policy: sandbox …; frame-ancestors 'self'` (`?draft=1` for signed-in users). Published pages allow `frame-src 'self' https:`.
+- **Forms.**
+  - `form.props.fields`: up to 30 fields of `{ id, type, label, required?, placeholder?, width?, options? }`. Types are listed in `spec.formFieldTypes`; `step` starts a new step.
+  - `success` is the message shown after sending; `redirect` is a link to go to instead.
+  - Without `fields`, a form keeps the classic name/email/message markup and API.
+  - `POST /api/contact` with `{ token, website, fields: { <id>: value } }`. File values are `{ name, data: <data URL> }`.
+  - Messages store the classic columns plus `fields_json`. Files are served from `/api/messages/<id>/files/<file>` as attachments.
+  - On PHP hosting, uploads in forms need `post_max_size` and `upload_max_filesize` of at least 22M.
 - **Saved designs.** `design.presets` is a list of `{ id, name, type, style? }` (up to 50). `style` is a normal breakpoint style map. Applying one copies it to the element.
 - **Rich text.** `props.doc` is a list of blocks (`p`, `h1`–`h6`, `ul`, `ol`).
   - **Blocks** can have:

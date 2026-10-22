@@ -364,6 +364,7 @@ function nimble_v2_node_props(string $type, mixed $input, array $ctx): array
         elseif ($kind === 'media') { if ($source === '') continue; $result = nimble_v2_safe_url($source); if ($result === '') nimble_error('Use a valid HTTP(S) URL or local path for ' . $key . '.'); }
         elseif ($kind === 'video') { if ($source === '') continue; if (!nimble_v2_video_source($source)) nimble_error('Videos must be MP4/WebM files or YouTube/Vimeo URLs.'); $result = nimble_v2_safe_url($source); }
         elseif ($kind === 'audio') { if ($source === '') continue; $result = nimble_v2_audio_source($source); if ($result === null) nimble_error('Audio must be an MP3, M4A, OGG or WAV file.'); }
+        elseif ($kind === 'formFields') { $result = nimble_v2_form_fields($source); if (!$result) continue; }
         elseif ($kind === 'socialList') {
             if (!nimble_v2_is_list($source) || count($source) > $spec['limits']['socialItems']) nimble_error('Use no more than ' . $spec['limits']['socialItems'] . ' social links.');
             $result = [];
@@ -527,6 +528,41 @@ function nimble_v2_menu(mixed $input, array $ctx): array
         return $result;
     };
     return array_values(array_filter(array_map(static fn($source) => $item($source, 0), $input)));
+}
+// Form builder fields. "step" splits the form into steps; its label is the step title.
+function nimble_v2_form_fields(mixed $input): array
+{
+    $spec = nimble_v2_spec(); $limits = $spec['limits'];
+    if (!nimble_v2_is_list($input) || count($input) > $limits['formFields']) nimble_error('Forms can have at most ' . $limits['formFields'] . ' fields.');
+    $ids = []; $files = 0; $fields = [];
+    foreach ($input as $field) {
+        if (!nimble_v2_is_object($field) || !is_string($field['id'] ?? null) || !preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $field['id']) || isset($ids[$field['id']]) || in_array($field['id'], ['token', 'website'], true)) nimble_error('Form fields need unique short IDs.');
+        $ids[$field['id']] = true;
+        if (!in_array($field['type'] ?? null, $spec['formFieldTypes'], true)) nimble_error('Unknown form field type.');
+        $result = ['id' => $field['id'], 'type' => $field['type'], 'label' => trim(nimble_v2_text($field['label'] ?? '', 200, 'Field label'))];
+        if ($result['label'] === '' && $field['type'] !== 'step') nimble_error('Form fields need a label.');
+        if ($field['type'] === 'step') { $fields[] = $result; continue; }
+        if (($field['required'] ?? null) === true) $result['required'] = true;
+        if (($field['placeholder'] ?? null) !== null && $field['placeholder'] !== '') $result['placeholder'] = nimble_v2_text($field['placeholder'], 200, 'Placeholder');
+        if (($field['width'] ?? null) !== null) { if (!in_array($field['width'], ['full', 'half'], true)) nimble_error('Field width must be full or half.'); if ($field['width'] === 'half') $result['width'] = 'half'; }
+        if (in_array($field['type'], ['select', 'radio', 'checkbox'], true) && ($field['options'] ?? null) !== null) {
+            if (!nimble_v2_is_list($field['options']) || count($field['options']) > $limits['formOptions']) nimble_error('Use at most ' . $limits['formOptions'] . ' options.');
+            $options = [];
+            foreach ($field['options'] as $option) { $value = trim(nimble_v2_text($option, 120, 'Option')); if ($value !== '' && !in_array($value, $options, true)) $options[] = $value; }
+            if ($options) $result['options'] = $options;
+        }
+        if (in_array($field['type'], ['select', 'radio'], true) && !isset($result['options'])) nimble_error('Choice fields need at least one option.');
+        if ($field['type'] === 'file' && ++$files > $limits['formFiles']) nimble_error('Forms can have at most ' . $limits['formFiles'] . ' file fields.');
+        $fields[] = $result;
+    }
+    return $fields;
+}
+// The fields a published form accepts; null means the standard name, email and message.
+function nimble_v2_form_definition(?array $site, string $id): ?array
+{
+    $node = ($site['version'] ?? null) === 2 ? ($site['nodes'][$id] ?? null) : null;
+    if (($node['type'] ?? null) !== 'form' || !isset($node['props']['fields'])) return null;
+    return array_values(array_filter($node['props']['fields'], static fn($field) => $field['type'] !== 'step'));
 }
 function nimble_v2_social_url(mixed $value): string
 {

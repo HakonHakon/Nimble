@@ -109,7 +109,16 @@ test('PHP and Node reject the same invalid v2 documents', { skip }, async () => 
     mutate(doc => { doc.nodes.copy.children.push('s'); doc.nodes.s = { type: 'social', props: { items: [{ url: 'javascript:alert(1)' }] } }; }),
     mutate(doc => { doc.nodes.copy.children.push('s'); doc.nodes.s = { type: 'social', props: { items: [{ url: 'https://x.example', icon: 'logo' }] } }; }),
     mutate(doc => { doc.nodes.copy.children.push('m'); doc.nodes.m = { type: 'menu', style: { desktop: { menuMode: 'drawer' } } }; }),
-    mutate(doc => { doc.nodes.copy.children.push('e'); doc.nodes.e = { type: 'embed', props: { kind: 'iframe' } }; })
+    mutate(doc => { doc.nodes.copy.children.push('e'); doc.nodes.e = { type: 'embed', props: { kind: 'iframe' } }; }),
+    ...[
+      [{ id: 'a', type: 'text', label: 'A' }, { id: 'a', type: 'email', label: 'B' }],
+      [{ id: 'token', type: 'text', label: 'A' }],
+      [{ id: 'a', type: 'colour', label: 'A' }],
+      [{ id: 'a', type: 'text', label: ' ' }],
+      [{ id: 'a', type: 'select', label: 'A', options: [' '] }],
+      [{ id: 'a', type: 'text', label: 'A', width: 'third' }],
+      [1, 2, 3, 4].map(n => ({ id: 'f' + n, type: 'file', label: 'F' }))
+    ].map(fields => mutate(doc => { doc.nodes.copy.children.push('form'); doc.nodes.form = { type: 'form', props: { fields } }; }))
   ];
   for (const [index, document] of cases.entries()) {
     const js = runJs(document), phpResult = runPhp(document);

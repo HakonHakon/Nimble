@@ -18,7 +18,7 @@
     "gradientStops": 8,
     "tracks": 24,
     "gridLines": 48,
-    "presets": 50, "menuItems": 60, "socialItems": 12,
+    "presets": 50, "menuItems": 60, "formFields": 30, "formOptions": 30, "formFiles": 3, "formFileBytes": 5242880, "socialItems": 12,
     "fontFiles": 12
   },
   "patterns": {
@@ -128,6 +128,7 @@
     "at": ["M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z", "M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1"],
     "tag": ["M3 12V4h8l10 10-8 8z", "M9 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"]
   },
+  "formFieldTypes": ["text", "email", "phone", "number", "textarea", "select", "radio", "checkbox", "date", "file", "step"],
   "nodeTypes": {
     "section": { "container": true, "root": true, "tags": ["section", "header", "footer", "div", "article", "aside", "nav"], "display": "grid", "props": { "popup": "bool", "popupOpen": "enum:link,load", "popupDelay": "int:0:120", "popupWidth": "size", "headerMode": "enum:normal,sticky,overlay,overlay-sticky", "scrollStyle": "enum:none,shrink,shadow,solid" } },
     "container": { "container": true, "tags": ["div", "article", "aside", "nav", "figure"], "display": "grid" },
@@ -139,7 +140,7 @@
     "tabs": { "container": true, "panels": true, "display": "block", "props": { "tabAlign": "enum:start,center,end,stretch", "tabStyle": "enum:underline,pills", "activeColor": "color" } },
     "accordion": { "container": true, "panels": true, "display": "block", "props": { "multiple": "bool", "firstOpen": "bool", "activeColor": "color" } },
     "audio": { "display": "block", "props": { "src": "audio", "title": "text:200", "autoplay": "bool", "loop": "bool" } },
-    "form": { "display": "block", "props": { "submitLabel": "text:120", "note": "text:500" } },
+    "form": { "display": "block", "props": { "fields": "formFields", "submitLabel": "text:120", "success": "text:300", "redirect": "link", "note": "text:500" } },
     "shape": { "display": "block", "props": { "shape": "enum:rect,ellipse,blob" } },
     "spacer": { "display": "block" },
     "divider": { "display": "block", "props": { "orientation": "enum:horizontal,vertical", "thickness": "length", "lineStyle": "enum:solid,dashed,dotted,double" } },

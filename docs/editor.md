@@ -124,6 +124,13 @@ The **Add** panel includes layout presets:
   - *HTML embed*: your code runs on the published site and in Preview, in a sandboxed frame served from `/embed/<id>.html` with its own origin, so it cannot read the site or the visitor's session. The canvas shows a static preview without scripts.
   - *Map*: Google Maps, from an address and a zoom level.
   - *Website embed*: an https:// page in a frame.
+- **Forms:**
+  - A contact form starts with name, email and message. *Customize fields* opens the form builder.
+  - Field types: short text, email, phone, number, long text, drop-down, single choice, checkboxes (or a single checkbox, for example for consent), date and file upload (PDF, image, Word or text, up to 5 MB, at most 3 file fields).
+  - Each field can be required and full or half width, and can have a placeholder and options.
+  - *New step* splits the form into steps with Back/Next, and Next checks the fields of the step first.
+  - After sending, show a message or go to a page.
+  - Submissions are checked against the published field list. They appear in the control panel inbox with every field; files are kept in private storage and only signed-in users can download them.
 - **SVG images** can be uploaded in the Media panel like other images. They are shown through `<img>` and served with a sandboxing Content-Security-Policy, so scripts inside an SVG never run.
 
 ## Text editing

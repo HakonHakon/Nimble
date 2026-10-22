@@ -303,3 +303,11 @@ code{background:var(--soft);padding:2px 6px;border-radius:5px}
 .menu-row input{min-width:0}
 .menu-row small{grid-column:1/-1;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;margin-top:4px}
+/* Phase 8e: form builder */
+.ff{display:grid;gap:6px}
+.ff-row{display:grid;gap:5px;padding:6px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.ff-row.is-step{background:var(--accent-soft);border-color:#d8d3ff}
+.ff-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;align-items:center}.ff-head [data-ff-label]{grid-column:1/-1;order:3}
+.ff-head select,.ff-head input,.ff-more input,.ff-more select,.ff-more textarea{min-width:0}
+.ff-more{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:4px 8px;align-items:center}
+.ff-more textarea{grid-column:1/-1}

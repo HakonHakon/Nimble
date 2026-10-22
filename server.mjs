@@ -6,6 +6,8 @@ import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from
 import { isIP } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeSite, makeDefaultSite, escapeHtml, hasForm } from './lib/site-model.mjs';
+import { formDefinition } from './lib/site-model-v2.mjs';
+import { validateSubmission, FORM_FILE_TYPES } from './lib/forms.mjs';
 import { publishAtomic, currentRelease } from './lib/publish-atomic.mjs';
 import { pageHtml } from './lib/render.mjs';
 import { validPassword, passwordHash, checkPassword } from './lib/passwords.mjs';
@@ -14,6 +16,8 @@ import { fontRequest, cssUrl, parseFontCss, allowedFontUrl, isWoff2 } from './li
 const root = path.dirname(fileURLToPath(import.meta.url));
 const storage = path.resolve(process.env.NIMBLE_STORAGE_DIR || root);
 const dataDir = path.join(storage, 'data'), uploads = path.join(storage, 'uploads'), published = path.join(storage, 'published');
+// Files sent through forms are private: they are only served to signed-in users from the inbox.
+const formFiles = path.join(dataDir, 'form-files');
 const production = process.env.NODE_ENV === 'production';
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST || (production ? '0.0.0.0' : '127.0.0.1');
@@ -26,7 +30,7 @@ if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 30) throw
 if (!Number.isInteger(maxDocumentBytes) || maxDocumentBytes < 10000 || maxDocumentBytes > 12000000) throw new Error('Site document limit must be 10,000–12,000,000 bytes.');
 if (!Number.isSafeInteger(maxStorageBytes) || maxStorageBytes < 1) throw new Error('Media quota must be a positive integer.');
 if (production && (!publicOrigin || !publicOrigin.startsWith('https://'))) throw new Error('Production requires NIMBLE_PUBLIC_URL=https://your-domain.');
-await Promise.all([dataDir, uploads, published].map(directory => fs.mkdir(directory, { recursive: true })));
+await Promise.all([dataDir, uploads, published, formFiles].map(directory => fs.mkdir(directory, { recursive: true })));
 const db = new DatabaseSync(path.join(dataDir, 'nimble.sqlite'));
 db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
 db.exec([
@@ -42,6 +46,7 @@ db.exec([
   'CREATE INDEX IF NOT EXISTS messages_created ON messages(created_at);'
 ].join('\n'));
 if (!db.prepare('PRAGMA table_info(sites)').all().some(column => column.name === 'revision')) db.exec('ALTER TABLE sites ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
+if (!db.prepare('PRAGMA table_info(messages)').all().some(column => column.name === 'fields_json')) db.exec('ALTER TABLE messages ADD COLUMN fields_json TEXT');
 db.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').run('contact_secret', randomBytes(32).toString('hex'));
 const contactSecret = db.prepare('SELECT value FROM app_settings WHERE key=?').get('contact_secret').value;
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -519,8 +524,21 @@ const server = http.createServer(async (req, res) => {
       const messages = db.prepare('SELECT * FROM messages WHERE id<? ORDER BY id DESC LIMIT 100').all(before);
       return send(res, 200, { messages, nextBefore: messages.length === 100 ? messages.at(-1).id : null });
     }
+    const fileMatch = pathname.match(/^\/api\/messages\/(\d+)\/files\/([a-f0-9-]{36}\.[a-z]{3,4})$/);
+    if (fileMatch && method === 'GET') {
+      requireAccess(req, 'messages');
+      const row = db.prepare('SELECT fields_json FROM messages WHERE id=?').get(Number(fileMatch[1]));
+      const entry = JSON.parse(row?.fields_json || '[]').find(item => item.type === 'file' && item.file === fileMatch[2]);
+      if (!entry) throw problem(404, 'Not found.');
+      const bytes = await fs.readFile(path.join(formFiles, entry.file));
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      res.writeHead(200, { 'Content-Type': FORM_FILE_TYPES[entry.file.split('.').pop()] || 'application/octet-stream', 'Content-Length': bytes.length, 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(entry.name), 'Cache-Control': 'private, no-store' });
+      return res.end(bytes);
+    }
     if (pathname.match(/^\/api\/messages\/\d+$/) && method === 'DELETE') {
       const auth = requireAccess(req, 'messages', true), id = Number(pathname.split('/').at(-1));
+      const row = db.prepare('SELECT fields_json FROM messages WHERE id=?').get(id);
+      for (const entry of JSON.parse(row?.fields_json || '[]')) if (entry.type === 'file' && /^[a-f0-9-]{36}\.[a-z]{3,4}$/.test(entry.file || '')) await fs.unlink(path.join(formFiles, entry.file)).catch(() => {});
       db.prepare('DELETE FROM messages WHERE id=?').run(id); audit(auth.user.id, 'message_deleted', { id });
       return send(res, 200, { ok: true });
     }
@@ -532,10 +550,23 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/contact' && method === 'POST') {
       rate('contact:' + clientIP(req), 5);
-      const body = await readBody(req, 15000, true);
+      // Builder forms may carry files (sent as data URLs), so the limit covers the largest allowed upload.
+      const body = await readBody(req, 22_000_000, true);
       const token = verifyContactToken(body.token), release = await currentRelease(published);
       if (!hasForm(release?.site, token.block)) throw problem(400, 'This form is unavailable.');
       if (body.website) return send(res, 200, { ok: true });
+      const fields = formDefinition(release.site, token.block);
+      if (fields) {
+        let result;
+        try { result = validateSubmission(fields, body.fields); } catch (error) { throw problem(400, error.message); }
+        for (const file of result.files) {
+          file.entry.file = randomUUID() + '.' + file.extension;
+          await fs.writeFile(path.join(formFiles, file.entry.file), file.bytes, { flag: 'wx' });
+        }
+        db.prepare('INSERT INTO messages(name,email,message,page_id,created_at,fields_json) VALUES(?,?,?,?,?,?)').run(result.name, result.email, result.message, token.block, timestamp(), JSON.stringify(result.entries));
+        return send(res, 201, { ok: true });
+      }
+      if (Number(req.headers['content-length'] || 0) > 15000) throw problem(413, 'This request is too large.');
       const name = String(body.name || '').trim(), email = emailValue(body.email), message = String(body.message || '').trim();
       if (!name || name.length > 120 || !validEmail(email) || !message || message.length > 5000) throw problem(400, 'Enter your name, a valid email, and a message of at most 5,000 characters.');
       db.prepare('INSERT INTO messages(name,email,message,page_id,created_at) VALUES(?,?,?,?,?)').run(name, email, message, token.block, timestamp());

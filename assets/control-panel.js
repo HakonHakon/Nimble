@@ -20,7 +20,13 @@ async function loadMessages(older = false) {
   if (!older) $('messages').replaceChildren();
   for (const message of result.messages) {
     const article = document.createElement('article'); article.className = 'message-card';
-    article.innerHTML = '<h3>' + e(message.name) + '</h3><p><a href="mailto:' + e(message.email) + '">' + e(message.email) + '</a> · ' + e(new Date(message.created_at).toLocaleString()) + '</p><p class="message-body">' + e(message.message) + '</p><button class="delete" data-message-delete="' + message.id + '">Delete message</button>';
+    // Form builder submissions list every field; files download through the authenticated API.
+    let fields = null;
+    try { fields = message.fields_json ? JSON.parse(message.fields_json) : null; } catch { fields = null; }
+    const body = fields ? '<dl class="message-fields">' + fields.map(field => '<dt>' + e(field.label) + '</dt><dd>' + (field.type === 'file'
+      ? '<a href="/api/messages/' + message.id + '/files/' + encodeURIComponent(field.file) + '" download="' + e(field.name) + '">' + e(field.name) + '</a> <small>(' + Math.max(1, Math.round(field.size / 1024)) + ' KB)</small>'
+      : e(Array.isArray(field.value) ? field.value.join(', ') : field.value)) + '</dd>').join('') + '</dl>' : '<p class="message-body">' + e(message.message) + '</p>';
+    article.innerHTML = '<h3>' + e(message.name) + '</h3><p>' + (message.email ? '<a href="mailto:' + e(message.email) + '">' + e(message.email) + '</a> · ' : '') + e(new Date(message.created_at).toLocaleString()) + '</p>' + body + '<button class="delete" data-message-delete="' + message.id + '">Delete message</button>';
     $('messages').append(article);
   }
   if (!$('messages').children.length) $('messages').textContent = 'No messages yet. Enquiries from your published contact forms appear here.';

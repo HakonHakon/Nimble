@@ -280,6 +280,60 @@ function nimble_v2_link_attributes(array $site, array $link): string
 const NIMBLE_V2_FILTERS = ['none' => 'none', 'grayscale' => 'grayscale(1)', 'sepia' => 'sepia(0.8)', 'blur' => 'blur(3px)', 'brighten' => 'brightness(1.2)', 'darken' => 'brightness(0.75)', 'contrast' => 'contrast(1.35)', 'saturate' => 'saturate(1.6)', 'vintage' => 'sepia(0.35) contrast(1.1) saturate(0.8) brightness(1.05)'];
 // Same output as JavaScript's encodeURIComponent.
 function nimble_v2_uri_component(string $value): string { return strtr(rawurlencode($value), ['%21' => '!', '%2A' => '*', '%27' => "'", '%28' => '(', '%29' => ')']); }
+const NIMBLE_V2_FORM_FILE_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.txt,.doc,.docx';
+function nimble_v2_form_outcome(array $site, array $props): string
+{
+    return (($props['success'] ?? '') !== '' ? ' data-success="' . nimble_v2_e($props['success']) . '"' : '') . (isset($props['redirect']) ? ' data-redirect="' . nimble_v2_e(nimble_v2_link_href($site, $props['redirect'])) . '"' : '');
+}
+function nimble_v2_form_field_html(array $field): string
+{
+    $e = 'nimble_v2_e';
+    $name = ' name="' . $e($field['id']) . '"'; $required = !empty($field['required']) ? ' required' : ''; $star = !empty($field['required']) ? '<abbr title="required">*</abbr>' : '';
+    $placeholder = ($field['placeholder'] ?? '') !== '' ? ' placeholder="' . $e($field['placeholder']) . '"' : '';
+    $class = 'form-field' . (($field['width'] ?? null) === 'half' ? ' is-half' : '');
+    $caption = '<span>' . $e($field['label']) . $star . '</span>';
+    $type = $field['type'];
+    if ($type === 'textarea') return '<label class="' . $class . '">' . $caption . '<textarea' . $name . $required . $placeholder . ' maxlength="5000"></textarea></label>';
+    if ($type === 'select') {
+        $options = '';
+        foreach ($field['options'] as $option) $options .= '<option>' . $e($option) . '</option>';
+        return '<label class="' . $class . '">' . $caption . '<select' . $name . $required . '><option value="">' . $e(($field['placeholder'] ?? '') !== '' ? $field['placeholder'] : 'Choose…') . '</option>' . $options . '</select></label>';
+    }
+    if ($type === 'radio' || ($type === 'checkbox' && isset($field['options']))) {
+        $input = $type === 'radio' ? 'radio' : 'checkbox';
+        $html = '<fieldset class="' . $class . ' form-choice"' . (!empty($field['required']) && $input === 'checkbox' ? ' data-required' : '') . '><legend>' . $e($field['label']) . $star . '</legend>';
+        foreach ($field['options'] as $option) $html .= '<label><input type="' . $input . '"' . $name . ($input === 'radio' ? $required : '') . ' value="' . $e($option) . '">' . $e($option) . '</label>';
+        return $html . '</fieldset>';
+    }
+    if ($type === 'checkbox') return '<label class="' . $class . ' form-check"><input type="checkbox"' . $name . $required . ' value="yes"><span>' . $e($field['label']) . $star . '</span></label>';
+    if ($type === 'file') return '<label class="' . $class . '">' . $caption . '<input type="file"' . $name . $required . ' accept="' . NIMBLE_V2_FORM_FILE_ACCEPT . '"></label>';
+    $inputType = ['email' => 'email', 'phone' => 'tel', 'number' => 'number', 'date' => 'date'][$type] ?? 'text';
+    $autocomplete = ['email' => ' autocomplete="email"', 'phone' => ' autocomplete="tel"'][$type] ?? '';
+    return '<label class="' . $class . '">' . $caption . '<input type="' . $inputType . '"' . $name . $autocomplete . $required . $placeholder . ($inputType === 'number' || $inputType === 'date' ? '' : ' maxlength="500"') . '></label>';
+}
+// Form builder markup: fields grouped into steps (split by "step" fields), with Back/Next for several steps.
+function nimble_v2_builder_form_html(array $site, array $node): string
+{
+    $props = $node['props']; $e = 'nimble_v2_e';
+    $steps = [['title' => '', 'fields' => []]];
+    foreach ($props['fields'] as $field) {
+        $last = count($steps) - 1;
+        if ($field['type'] !== 'step') { $steps[$last]['fields'][] = $field; continue; }
+        if ($steps[$last]['fields']) $steps[] = ['title' => $field['label'], 'fields' => []]; else $steps[$last]['title'] = $field['label'];
+    }
+    if (count($steps) > 1 && !$steps[count($steps) - 1]['fields']) array_pop($steps); // a step without fields yet is not shown
+    $many = count($steps) > 1; $submit = $e(($props['submitLabel'] ?? '') !== '' ? $props['submitLabel'] : 'Send message ↗');
+    $html = '<form action="/api/contact" method="post" data-contact-form data-block="' . $e($node['id']) . '" data-fields' . nimble_v2_form_outcome($site, $props) . ' novalidate>';
+    if ($many) $html .= '<p class="form-progress" aria-live="polite">Step <span data-form-current>1</span> of ' . count($steps) . '</p>';
+    foreach ($steps as $i => $step) {
+        $html .= '<fieldset class="form-step" data-step="' . $i . '"' . ($i ? ' hidden' : '') . '>' . ($step['title'] !== '' ? '<legend>' . $e($step['title']) . '</legend>' : '');
+        foreach ($step['fields'] as $field) $html .= nimble_v2_form_field_html($field);
+        $html .= '</fieldset>';
+    }
+    $html .= '<div class="honeypot" aria-hidden="true"><label>Leave blank<input name="website" tabindex="-1" autocomplete="off"></label></div><input type="hidden" name="token">';
+    $html .= $many ? '<div class="form-nav"><button type="button" class="button button-ghost" data-form-back hidden>Back</button><button type="button" class="button" data-form-next>Next</button><button class="button" type="submit" hidden>' . $submit . '</button></div>' : '<button class="button" type="submit">' . $submit . '</button>';
+    return $html . '<p role="status" class="form-status" aria-live="polite"></p><small>' . $e($props['note'] ?? 'We use these details only to respond to your enquiry.') . '</small></form>';
+}
 function nimble_v2_uses_hamburger(array $node): bool
 {
     foreach ($node['style'] ?? [] as $values) if (($values['menuMode'] ?? null) === 'hamburger') return true;
@@ -451,8 +505,9 @@ function nimble_v2_render_node(array $site, string $id, array $page, array $opti
         $player = !empty($props['src']) ? '<audio controls preload="metadata"' . (!empty($props['autoplay']) ? ' autoplay' : '') . (!empty($props['loop']) ? ' loop' : '') . ' src="' . nimble_v2_e($props['src']) . '">Your browser does not support audio.</audio>' : '<p class="muted">Audio coming soon.</p>';
         return '<div' . $attributes . '>' . $title . $player . '</div>';
     }
+    if ($node['type'] === 'form' && isset($props['fields'])) return '<div' . $attributes . '>' . nimble_v2_builder_form_html($site, $node) . '</div>';
     if ($node['type'] === 'form') {
-        return '<div' . $attributes . '><form action="/api/contact" method="post" data-contact-form data-block="' . nimble_v2_e($node['id']) . '"><label>Your name<input name="name" autocomplete="name" maxlength="120" required></label><label>Email address<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>Your message<textarea name="message" maxlength="5000" required></textarea></label><div class="honeypot" aria-hidden="true"><label>Leave blank<input name="website" tabindex="-1" autocomplete="off"></label></div><input type="hidden" name="token"><button class="button" type="submit">' . nimble_v2_e(($props['submitLabel'] ?? '') !== '' ? $props['submitLabel'] : 'Send message ↗') . '</button><p role="status" class="form-status" aria-live="polite"></p><small>' . nimble_v2_e($props['note'] ?? 'We use these details only to respond to your enquiry.') . '</small></form></div>';
+        return '<div' . $attributes . '><form action="/api/contact" method="post" data-contact-form data-block="' . nimble_v2_e($node['id']) . '"' . nimble_v2_form_outcome($site, $props) . '><label>Your name<input name="name" autocomplete="name" maxlength="120" required></label><label>Email address<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>Your message<textarea name="message" maxlength="5000" required></textarea></label><div class="honeypot" aria-hidden="true"><label>Leave blank<input name="website" tabindex="-1" autocomplete="off"></label></div><input type="hidden" name="token"><button class="button" type="submit">' . nimble_v2_e(($props['submitLabel'] ?? '') !== '' ? $props['submitLabel'] : 'Send message ↗') . '</button><p role="status" class="form-status" aria-live="polite"></p><small>' . nimble_v2_e($props['note'] ?? 'We use these details only to respond to your enquiry.') . '</small></form></div>';
     }
     if ($node['type'] === 'icon') {
         $icon = $props['icon'] ?? 'star';

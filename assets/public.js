@@ -1,6 +1,7 @@
 document.querySelectorAll('[data-contact-form]').forEach(form => {
   let tokenPromise;
   const status = form.querySelector('[role=status]');
+  const builder = form.hasAttribute('data-fields');
   const loadToken = () => tokenPromise ||= fetch('/api/contact-token?block=' + encodeURIComponent(form.dataset.block)).then(async response => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Contact form unavailable.');
@@ -8,18 +9,62 @@ document.querySelectorAll('[data-contact-form]').forEach(form => {
     return data.token;
   });
   loadToken().catch(error => { status.textContent = error.message; tokenPromise = null; });
+
+  // Steps: Next checks the fields of the current step before moving on.
+  const steps = [...form.querySelectorAll('.form-step')];
+  let step = 0;
+  const valid = scope => {
+    for (const group of scope.querySelectorAll('fieldset[data-required]')) {
+      const boxes = [...group.querySelectorAll('input[type=checkbox]')];
+      boxes[0].setCustomValidity(boxes.some(box => box.checked) ? '' : 'Choose at least one option.');
+    }
+    for (const control of scope.querySelectorAll('input:not([type=hidden]):not([name=website]),select,textarea')) if (!control.checkValidity()) { control.reportValidity(); return false; }
+    return true;
+  };
+  const show = next => {
+    step = next;
+    steps.forEach((item, i) => { item.hidden = i !== step; });
+    form.querySelector('[data-form-back]')?.toggleAttribute('hidden', step === 0);
+    form.querySelector('[data-form-next]')?.toggleAttribute('hidden', step === steps.length - 1);
+    if (steps.length > 1) form.querySelector('button[type=submit]').hidden = step !== steps.length - 1;
+    const current = form.querySelector('[data-form-current]');
+    if (current) current.textContent = String(step + 1);
+    steps[step]?.querySelector('input,select,textarea')?.focus();
+  };
+  form.querySelector('[data-form-next]')?.addEventListener('click', () => { if (valid(steps[step])) show(step + 1); });
+  form.querySelector('[data-form-back]')?.addEventListener('click', () => show(step - 1));
+  form.addEventListener('change', event => { if (event.target.closest('fieldset[data-required]')) event.target.closest('fieldset').querySelector('input').setCustomValidity(''); });
+
+  const readFile = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, data: reader.result }); reader.onerror = reject; reader.readAsDataURL(file); });
+  async function payload() {
+    const data = new FormData(form);
+    if (!builder) return Object.fromEntries(data);
+    const fields = {};
+    for (const control of form.querySelectorAll('[name]')) {
+      const name = control.name;
+      if (name === 'token' || name === 'website' || name in fields) continue;
+      if (control.type === 'file') { const file = control.files[0]; if (file) { if (file.size > 5 * 1024 * 1024) throw new Error(file.name + ' is larger than 5 MB.'); fields[name] = await readFile(file); } continue; }
+      if (control.type === 'checkbox' && control.closest('.form-choice')) { fields[name] = data.getAll(name); continue; }
+      if (control.type === 'checkbox') { fields[name] = control.checked ? 'yes' : ''; continue; }
+      fields[name] = data.get(name) ?? '';
+    }
+    return { token: data.get('token'), website: data.get('website'), fields };
+  }
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const button = form.querySelector('button');
+    if (builder && !valid(form)) return;
+    const button = form.querySelector('button[type=submit]');
     button.disabled = true;
     status.textContent = 'Sending…';
     try {
       await loadToken();
-      const response = await fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      const response = await fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(await payload()) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Message could not be sent.');
+      if (form.dataset.redirect) { location.assign(form.dataset.redirect); return; }
       form.reset();
-      status.textContent = 'Thank you. Your message has reached our team.';
+      if (steps.length > 1) show(0);
+      status.textContent = form.dataset.success || 'Thank you. Your message has reached our team.';
       tokenPromise = null;
       loadToken().catch(() => { tokenPromise = null; });
     } catch (error) { status.textContent = error.message; tokenPromise = null; }
