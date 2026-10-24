@@ -1,0 +1,49 @@
+# Deploys the PHP edition to dev.parsen.no (Gigahost web hosting) over FTPS.
+# Repository secrets: DEV_FTP_USERNAME, DEV_FTP_PASSWORD (an FTP account from Flux → Webhosting → FTP Accounts).
+# config.php and storage/ on the server are never uploaded or deleted.
+name: Deploy dev.parsen.no
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint PHP
+        run: for f in php-backend/index.php php-backend/lib/*.php; do php -l "$f"; done
+
+      - name: Build release
+        run: bash scripts/build-php-release.sh "$GITHUB_WORKSPACE/release-out"
+
+      - name: Upload over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: parsen.no
+          protocol: ftps
+          port: 21
+          username: ${{ secrets.DEV_FTP_USERNAME }}
+          password: ${{ secrets.DEV_FTP_PASSWORD }}
+          local-dir: ./release-out/
+          # Path as seen by the FTP account; use ./ if the account is rooted at dev.parsen.no/public_html.
+          server-dir: ${{ vars.DEV_FTP_DIR || 'domains/dev.parsen.no/public_html/' }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            config.php
+            storage/data/**
+            storage/uploads/**
+
+      - name: Smoke test
+        run: |
+          curl -fsS https://dev.parsen.no/api/ready | tee /dev/stderr | grep -q '"ok":true'
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://dev.parsen.no/config.php)" = 403
